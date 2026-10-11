@@ -1,11 +1,11 @@
 // ==UserScript==
 // @name         Grzyby Nerthus
 // @namespace    http://tampermonkey.net/
-// @version      1.1
+// @version      1.2
 // @description  Wysyłanie sprawdzonych map do panelu Nerthus2
 // @author       Ty
 // @match        https://nerthus.margonem.pl/*
-// @connect      srv71.mikr.us
+// @connect      rzabboard.cytr.us
 // @grant        GM_xmlhttpRequest
 // ==/UserScript==
 
@@ -13,7 +13,7 @@
     'use strict';
     console.log('[Radar] Skrypt uruchomiony pomyślnie!');
 
-    const ENDPOINT_URL = 'http://srv71.mikr.us:40015/nerthus2/check_map.php';
+    const ENDPOINT_URL = 'https://rzabboard.cytr.us/nerthus2/check_map.php';
     let lastCheckedMap = '';
 
     setInterval(() => {
