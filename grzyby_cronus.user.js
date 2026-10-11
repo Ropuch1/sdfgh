@@ -1,5 +1,5 @@
 // ==UserScript==
-// @name         Grzyby Nerthus
+// @name         Grzyby Cronus
 // @namespace    http://tampermonkey.net/
 // @version      1.2
 // @description  Wysyłanie sprawdzonych map do panelu Nerthus2
