@@ -1,38 +1,20 @@
 // ==UserScript==
-// @name         Grzyby Cronus
+// @name         Grzyby Nerthus
 // @namespace    http://tampermonkey.net/
-// @version      2.0
-// @description  Wysyłanie sprawdzonych map na Cronusie (Bypass CORS)
+// @version      1.2
+// @description  Wysyłanie sprawdzonych map do panelu Nerthus2
 // @author       Ty
 // @match        https://cronus.margonem.com/*
-// @connect      srv71.mikr.us
+// @connect      rzabboard.cytr.us
 // @grant        GM_xmlhttpRequest
 // ==/UserScript==
 
 (function() {
     'use strict';
-    console.log('[Radar Cronus] Uruchomiono skrypt');
+    console.log('[Radar] Skrypt uruchomiony pomyślnie!');
 
-    // Link do sprawdzeń map z użyciem HTTPS i odpowiedniego portu
-    const ENDPOINT_URL = 'https://srv71.mikr.us:30112/grzyby/check_map.php';
+    const ENDPOINT_URL = 'https://rzabboard.cytr.us/cronus/check_map.php';
     let lastCheckedMap = '';
-
-    function sendMapCheck(currentMap, currentNick) {
-        GM_xmlhttpRequest({
-            method: 'POST',
-            url: ENDPOINT_URL,
-            headers: {
-                'Content-Type': 'application/x-www-form-urlencoded'
-            },
-            data: 'map=' + encodeURIComponent(currentMap) + '&nick=' + encodeURIComponent(currentNick),
-            onload: function(response) {
-                console.log('[Radar Cronus] Zapisano mapę:', response.responseText);
-            },
-            onerror: function(err) {
-                console.error('[Radar Cronus] Błąd połączenia:', err);
-            }
-        });
-    }
 
     setInterval(() => {
         let currentMap = '';
@@ -47,9 +29,17 @@
         }
 
         if (currentMap && currentNick && currentMap !== lastCheckedMap) {
-            console.log('[Radar Cronus] Wykryto nową mapę:', currentMap, 'Wysyłam dla:', currentNick);
+            console.log('[Radar] Wykryto nową mapę:', currentMap, 'Wysyłam dla:', currentNick);
             lastCheckedMap = currentMap;
-            sendMapCheck(currentMap, currentNick);
+
+            fetch(ENDPOINT_URL, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+                body: 'map=' + encodeURIComponent(currentMap) + '&nick=' + encodeURIComponent(currentNick)
+            })
+            .then(r => r.text())
+            .then(res => console.log('[Radar] Serwer odpowiedział:', res))
+            .catch(e => console.log('[Radar] Błąd wysyłki:', e));
         }
     }, 2000);
 })();
