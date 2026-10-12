@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         HEROSI WERSJA TESTOWA
-// @version      1.0
+// @version      1.1
 // @updateURL    https://github.com/Ropuch1/sdfgh/raw/refs/heads/main/herosi_test_rzabboard.user.js
 // @downloadURL  https://github.com/Ropuch1/sdfgh/raw/refs/heads/main/herosi_test_rzabboard.user.js
 // @match        *://*.margonem.pl/*
