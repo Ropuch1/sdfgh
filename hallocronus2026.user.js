@@ -1,6 +1,6 @@
 // ==UserScript==
-// @name         HALLOWEEN2026
-// @version      2.1
+// @name         HALLOWEEN20266
+// @version      2.2
 // @updateURL    https://github.com/Ropuch1/sdfgh/raw/refs/heads/main/herosi_test_rzabboard.user.js
 // @downloadURL  https://github.com/Ropuch1/sdfgh/raw/refs/heads/main/herosi_test_rzabboard.user.js
 // @match        https://*.margonem.com/*
@@ -9,658 +9,179 @@
 // ==/UserScript==
 
 (function() {
-    const API_URL = "https://rzabboard.cytr.us/herosi/save_cronus.php";
-    const CONFIG_URL = "https://rzabboard.cytr.us/herosi/data_cronus/config_cronus.json";
-    const HEROES_URL = "https://rzabboard.cytr.us/herosi/data_cronus/heroes_cronus.json";
-    const PANEL_URL = "https://rzabboard.cytr.us/herosi/v2.php";
+    const URLS = { api: "https://rzabboard.cytr.us/herosi/save_cronus.php", conf: "https://rzabboard.cytr.us/herosi/data_cronus/config_cronus.json", data: "https://rzabboard.cytr.us/herosi/data_cronus/heroes_cronus.json", panel: "https://rzabboard.cytr.us/herosi/v2.php" };
 
-    // Wstrzyknięcie błyskawicznych, niemigotających tooltipów CSS
-    const tooltipStyles = document.createElement('style');
-    tooltipStyles.innerHTML = `
-        .rzab-btn-tooltip {
-            position: relative !important;
-        }
-        .rzab-btn-tooltip::after {
-            content: attr(data-tooltip);
-            position: absolute;
-            left: 100%;
-            top: 50%;
-            transform: translateY(-50%);
-            margin-left: 10px;
-            background: rgba(15, 23, 42, 0.95);
-            border-left: 3px solid #10b981;
-            color: #fff;
-            padding: 4px 8px;
-            border-radius: 4px;
-            font-size: 11px;
-            font-family: Tahoma, sans-serif;
-            white-space: nowrap;
-            opacity: 0;
-            visibility: hidden;
-            pointer-events: none; /* Kluczowe: zapobiega migotaniu przy najechaniu z kursorem na sam dymek */
-            transition: opacity 0.15s ease-in-out, visibility 0.15s;
-            z-index: 2147483647;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.5);
-        }
-        .rzab-btn-tooltip:hover::after {
-            opacity: 1;
-            visibility: visible;
-        }
-    `;
-    document.head.appendChild(tooltipStyles);
+    document.head.insertAdjacentHTML('beforeend', `<style>.rzab-btn-tooltip{position:relative!important}.rzab-btn-tooltip::after{content:attr(data-tooltip);position:absolute;left:100%;top:50%;transform:translateY(-50%);margin-left:10px;background:rgba(15,23,42,.95);border-left:3px solid #10b981;color:#fff;padding:4px 8px;border-radius:4px;font-size:11px;font-family:Tahoma,sans-serif;white-space:nowrap;opacity:0;visibility:hidden;pointer-events:none;transition:opacity .15s ease-in-out,visibility .15s;z-index:2147483647;box-shadow:0 2px 5px rgba(0,0,0,.5)}.rzab-btn-tooltip:hover::after{opacity:1;visibility:visible}</style>`);
 
-    let heroMaps = {};
-    let configData = {};
-    let heroesData = {};
-    const reportedNpcs = new Set();
-    let lastMap = "";
-    let lastPingTime = 0;
-    let trackedHero = null;
+    let heroMaps = {}, configData = {}, heroesData = {}, reportedNpcs = new Set(), lastMap = "", lastPingTime = 0, trackedHero = null;
 
-    function showCornerNotification(text, color = "#10b981") {
-        let toast = document.createElement("div");
-        toast.innerHTML = text;
-        toast.style.cssText = `
-            position: fixed; bottom: 20px; right: 20px;
-            background: rgba(15, 23, 42, 0.95); color: ${color};
-            padding: 12px 20px; border-radius: 8px; border-left: 4px solid ${color};
-            box-shadow: 0 4px 10px rgba(0,0,0,0.5); z-index: 999999;
-            font-weight: bold; font-family: Tahoma, sans-serif;
-            transition: opacity 0.5s; pointer-events: none;
-        `;
-        document.body.appendChild(toast);
-        setTimeout(() => { toast.style.opacity = "0"; }, 3500);
-        setTimeout(() => { toast.remove(); }, 4000);
+    const $ = (id) => document.getElementById(id);
+    const lsGet = (k, def) => localStorage.getItem(k) || def;
+    const lsSet = (k, v) => localStorage.setItem(k, v);
+    const timeAgo = (ts, now) => ts === 0 ? "Nigdy" : (now - ts < 60 ? `${now - ts}s temu` : `${Math.floor((now - ts)/60)}m temu`);
+    const fmtTime = (s) => s<=0 ? "00:00:00" : `${Math.floor(s/3600).toString().padStart(2,'0')}:${Math.floor((s%3600)/60).toString().padStart(2,'0')}:${(s%60).toString().padStart(2,'0')}`;
+    const fmtAbs = (ts) => ts<=0 ? "--" : new Date(ts*1000).toLocaleString('pl-PL', {day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit',second:'2-digit'}).replace(',','');
+
+    function notify(text, color = "#10b981") {
+        let t = document.createElement("div");
+        t.innerHTML = text;
+        t.style.cssText = `position:fixed;bottom:20px;right:20px;background:rgba(15,23,42,0.95);color:${color};padding:12px 20px;border-radius:8px;border-left:4px solid ${color};box-shadow:0 4px 10px rgba(0,0,0,0.5);z-index:999999;font-weight:bold;font-family:Tahoma,sans-serif;transition:opacity 0.5s;pointer-events:none;`;
+        document.body.appendChild(t);
+        setTimeout(() => t.style.opacity = "0", 3500);
+        setTimeout(() => t.remove(), 4000);
     }
 
-    function formatTimeLeft(sec) {
-        if (sec <= 0) return "00:00:00";
-        const h = Math.floor(sec / 3600);
-        const m = Math.floor((sec % 3600) / 60);
-        const s = sec % 60;
-        return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+    function req(url, method, onload, data = null) {
+        GM_xmlhttpRequest({ method, url, data, headers: data ? {"Content-Type": "application/x-www-form-urlencoded"} : undefined, onload });
     }
 
-    function formatAbsolute(ts) {
-        if(ts <= 0) return "--";
-        let d = new Date(ts * 1000);
-        let DD = String(d.getDate()).padStart(2, '0');
-        let MM = String(d.getMonth() + 1).padStart(2, '0');
-        let YYYY = d.getFullYear();
-        let hh = String(d.getHours()).padStart(2, '0');
-        let mm = String(d.getMinutes()).padStart(2, '0');
-        let ss = String(d.getSeconds()).padStart(2, '0');
-        return `${DD}.${MM}.${YYYY} ${hh}:${mm}:${ss}`;
-    }
-
-    function timeAgoText(ts, now) {
-        if(ts === 0) return "Nigdy";
-        let diff = now - ts;
-        if(diff < 60) return `${diff}s temu`;
-        let m = Math.floor(diff / 60);
-        return `${m}m temu`;
-    }
-
-    // ================= TOOLTIP SYSTEM =================
-    let tooltipEl = document.createElement('div');
-    tooltipEl.id = 'rzab-custom-tooltip';
-    tooltipEl.className = 'tip-wrapper normal-tip';
-    tooltipEl.style.cssText = `
-        position: fixed; display: none; z-index: 2147483647;
-        pointer-events: none;
-    `;
-    document.body.appendChild(tooltipEl);
+    // --- TOOLTIP ---
+    let tEl = document.createElement('div');
+    tEl.id = 'rzab-custom-tooltip';
+    tEl.style.cssText = `position:fixed;display:none;z-index:2147483647;pointer-events:none;`;
+    tEl.className = 'tip-wrapper normal-tip';
+    document.body.appendChild(tEl);
 
     document.addEventListener('mouseover', e => {
         let row = e.target.closest('.rzab-timer-row');
-        if(row) {
-            let npc = row.getAttribute('data-npc');
-            let conf = configData[npc];
-            let info = heroesData[npc] || { last_kill: 0, checked_maps: {} };
-            if(!conf) return;
+        if(!row) return;
+        let npc = row.dataset.npc, conf = configData[npc], info = heroesData[npc] || {last_kill:0, checked_maps:{}};
+        if(!conf) return;
 
-            let now = Math.floor(Date.now() / 1000);
-            let wStart = info.last_kill > 0 ? info.last_kill + conf.min : 0;
-            let wEnd = info.last_kill > 0 ? info.last_kill + conf.max : 0;
+        let now = Math.floor(Date.now() / 1000), wS = info.last_kill>0 ? info.last_kill+conf.min : 0, wE = info.last_kill>0 ? info.last_kill+conf.max : 0;
+        let hMaps = lsGet('rzab_timer_hide_maps')==='true', hCov = lsGet('rzab_timer_hide_covered')==='true';
 
-            let hideMaps = localStorage.getItem('rzab_timer_hide_maps') === 'true';
-            let hideCovered = localStorage.getItem('rzab_timer_hide_covered') === 'true';
+        tEl.style.cssText = `position:fixed;display:block;z-index:2147483647;pointer-events:none;min-width:${hMaps?'200px':'300px'};width:${hMaps?'max-content':'320px'};`;
 
-            let widthStyle = hideMaps ? 'min-width: 200px; width: max-content;' : 'min-width: 300px; width: 320px;';
-            tooltipEl.style.cssText = `position: fixed; display: block; z-index: 2147483647; pointer-events: none; ${widthStyle}`;
-
-            let html = `<div class="content" style="width: 100%; box-sizing: border-box; text-align: center;">`;
-            html += `<span class="elite_timer_tip_name" style="margin-bottom: 8px; display: block; font-size: 14px;">${npc} ${conf.level ? `(${conf.level}lvl)` : ''}</span>`;
-
-            html += `<span class="elite_timer_tip_date" style="margin-top: 5px; display: block;">Respawn Time</span>`;
-            html += `<span class="elite_timer_tip_date text-orange">Min: ${formatAbsolute(wStart)}</span>`;
-            html += `<span class="elite_timer_tip_date">Max: ${formatAbsolute(wEnd)}</span>`;
-
-            if(!hideMaps) {
-                html += `<br>`;
-                if(conf.maps && conf.maps.length > 0) {
-                    html += `<span class="elite_timer_tip_date" style="margin-top: 5px; display: block; color: #b4b4b4;">Lokalizacje respu${hideCovered ? ' (Wolne/Luki)' : ' (Obstawienie)'}:</span>`;
-
-                    let renderedMapsCount = 0;
-
-                    conf.maps.forEach(m => {
-                        if(!m.startsWith('//')) {
-                            let mapNameClean = m.replace(/^[-*•\s]+/, '').trim();
-                            let checkTs = info.checked_maps[m] ? info.checked_maps[m].ts : 0;
-                            let by = info.checked_maps[m] ? info.checked_maps[m].by : '';
-                            let diff = checkTs === 0 ? 999999 : (now - checkTs);
-
-                            let dotColor = "#ef4444";
-                            let isCovered = false;
-
-                            if(diff <= (conf.colorGreen || 60)) {
-                                dotColor = "#10b981";
-                                isCovered = true;
-                            } else if(diff <= (conf.colorOrange || 300)) {
-                                dotColor = "#f59e0b";
-                            }
-
-                            // Ukrywamy ZIELONE mapy w dymku, jeśli zębatka jest włączona
-                            if (hideCovered && isCovered) return;
-
-                            renderedMapsCount++;
-                            let ago = timeAgoText(checkTs, now);
-                            let byTxt = by ? `<span style="color:#aaa;">(${by})</span>` : '';
-
-                            html += `
-                            <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; font-size:11px; margin-top:3px; width:100%;">
-                                <div style="display:flex; align-items:center; min-width:0; flex:1;">
-                                    <span style="color:${dotColor}; font-size:14px; line-height:10px; margin-right:5px; flex-shrink:0;">•</span>
-                                    <span class="elite_timer_tip_map" style="display:inline-block; padding:0; background:none; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; width:100%; text-align:left !important;" title="${mapNameClean}">${mapNameClean}</span>
-                                </div>
-                                <div style="color:#888; text-align:right; white-space:nowrap; flex-shrink:0;">${ago} ${byTxt}</div>
-                            </div>`;
-                        }
-                    });
-
-                    if (renderedMapsCount === 0 && hideCovered) {
-                        html += `<span class="elite_timer_tip_map" style="text-align:center !important; display:block; color:#10b981; margin-top:5px;">Wszystkie respy obstawione.</span>`;
-                    }
-
-                } else {
-                    html += `<span class="elite_timer_tip_map" style="text-align:left !important; display:block;">Brak przypisanych map.</span>`;
-                }
-            }
-
-            html += `</div>`;
-            tooltipEl.innerHTML = html;
-        }
-    });
-
-    document.addEventListener('mousemove', e => {
-        if(tooltipEl.style.display === 'block') {
-            let x = e.clientX + 15;
-            let y = e.clientY + 15;
-            if(x + tooltipEl.offsetWidth > window.innerWidth) x = e.clientX - tooltipEl.offsetWidth - 10;
-            if(y + tooltipEl.offsetHeight > window.innerHeight) y = e.clientY - tooltipEl.offsetHeight - 10;
-            tooltipEl.style.left = x + 'px';
-            tooltipEl.style.top = y + 'px';
-        }
-    });
-
-    document.addEventListener('mouseout', e => {
-        if(e.target.closest('.rzab-timer-row')) {
-            tooltipEl.style.display = 'none';
-        }
-    });
-
-    // ================= WIDGET PANELU (ŻABKA) =================
-    function createPanelWidget() {
-        if (document.getElementById('rzabboard-native-widget')) return;
-
-        let widget = document.createElement('div');
-        widget.id = 'rzabboard-native-widget';
-        widget.className = "widget-button green widget-in-interface-bar";
-
-        let savedLeft = localStorage.getItem('rzab_widget_left') || '150px';
-        let savedTop = localStorage.getItem('rzab_widget_top') || '15px';
-
-        widget.style.cssText = `
-            width: 44px !important; height: 44px !important;
-            display: flex !important; align-items: center !important; justify-content: center !important;
-            background-image: linear-gradient(#396b29, #12210d) !important;
-            box-shadow: inset 0 0 1px 1px #cecece, inset 0 0 0 3px #0c0d0d !important;
-            border: 1px solid #0c0d0d !important; border-radius: 4px !important;
-            cursor: grab !important; z-index: 2147483646 !important;
-            position: fixed !important; left: ${savedLeft} !important; top: ${savedTop} !important;
-            user-select: none;
-        `;
-        widget.title = "LPM: Otwórz Panel | PPM: Pokaż/Ukryj Timer | 2xLPM: Reset Timera";
-
-        widget.innerHTML = `<div class="icon" style="display: flex; align-items: center; justify-content: center; font-size: 22px; filter: drop-shadow(0 1px 2px rgba(0,0,0,0.9)); pointer-events: none;">🐸</div>`;
-        document.body.appendChild(widget);
-
-        widget.addEventListener('contextmenu', (e) => {
-            e.preventDefault();
-            let timer = document.getElementById('rzabboard-event-timer');
-            if(timer) {
-                let isHidden = timer.style.display === 'none';
-                timer.style.display = isHidden ? 'block' : 'none';
-                localStorage.setItem('rzab_timer_visible', isHidden ? 'true' : 'false');
-                showCornerNotification(`Timer Eventowy został ${isHidden ? 'pokazany' : 'ukryty'}.`);
-            }
-        });
-
-        widget.addEventListener('dblclick', (e) => {
-            e.stopPropagation(); e.preventDefault();
-            localStorage.setItem('rzab_timer_left', '200px');
-            localStorage.setItem('rzab_timer_top', '80px');
-            let timer = document.getElementById('rzabboard-event-timer');
-            if (timer) {
-                timer.style.left = '200px';
-                timer.style.top = '80px';
-            }
-            showCornerNotification("🐸 Zresetowano pozycję Timera na domyślną!");
-        });
-
-        let isDragging = false, startX, startY, initialLeft, initialTop;
-        let singleClickTimer = null;
-
-        widget.addEventListener('mousedown', (e) => {
-            if (e.button !== 0) return;
-            isDragging = false; startX = e.clientX; startY = e.clientY;
-            let rect = widget.getBoundingClientRect();
-            initialLeft = rect.left; initialTop = rect.top;
-            widget.style.cursor = "grabbing";
-
-            function onMouseMove(moveEvent) {
-                let dx = moveEvent.clientX - startX; let dy = moveEvent.clientY - startY;
-                if (Math.abs(dx) > 3 || Math.abs(dy) > 3) isDragging = true;
-                if (isDragging) {
-                    widget.style.left = (initialLeft + dx) + 'px';
-                    widget.style.top = (initialTop + dy) + 'px';
-                }
-            }
-
-            function onMouseUp(upEvent) {
-                document.removeEventListener('mousemove', onMouseMove);
-                document.removeEventListener('mouseup', onMouseUp);
-                widget.style.cursor = "grab";
-
-                if (isDragging) {
-                    localStorage.setItem('rzab_widget_left', widget.style.left);
-                    localStorage.setItem('rzab_widget_top', widget.style.top);
-                } else {
-                    if (upEvent.detail === 1) {
-                        singleClickTimer = setTimeout(() => {
-                            window.open(PANEL_URL, "_blank");
-                        }, 250);
-                    } else if (upEvent.detail === 2) {
-                        clearTimeout(singleClickTimer);
-                    }
-                }
-            }
-            document.addEventListener('mousemove', onMouseMove);
-            document.addEventListener('mouseup', onMouseUp);
-        });
-    }
-
-    // ================= EVENT TIMER WIDGET =================
-    function createEventTimer() {
-        if (document.getElementById('rzabboard-event-timer')) return;
-
-        let savedLeft = localStorage.getItem('rzab_timer_left') || '200px';
-        let savedTop = localStorage.getItem('rzab_timer_top') || '80px';
-        let savedWidth = localStorage.getItem('rzab_timer_width') || '340px';
-        let isVisible = localStorage.getItem('rzab_timer_visible') !== 'false';
-
-        let timerEl = document.createElement('div');
-        timerEl.id = 'rzabboard-event-timer';
-        timerEl.className = 'c-window border-window transparent elite-timer';
-        timerEl.setAttribute('data-opacity-lvl', '3');
-        timerEl.style.cssText = `
-            touch-action: none; position: absolute; z-index: 2147483645;
-            display: ${isVisible ? 'block' : 'none'};
-            left: ${savedLeft}; top: ${savedTop}; width: ${savedWidth}; min-width: 250px; max-width: 600px;
-            resize: horizontal; overflow: hidden; height: auto;
-            /* Zapewnia, że dymki CSS będą widoczne i nie przycięte przez kontener */
-            overflow: visible !important;
-        `;
-
-        // Zmodyfikowany blok z przyciskami (dodane rzab-btn-tooltip oraz atrybuty data-tooltip)
-        timerEl.innerHTML = `
-            <div class="header-label-positioner" style="cursor: grab;">
-                <div class="draggable-window-element pointer-draggable-handle"></div>
-                <div class="header-label">
-                    <div class="left-decor"></div>
-                    <div class="right-decor"></div>
-                    <div class="text" name="Timer">Event Timer</div>
-                </div>
-            </div>
-
-            <div class="content" style="padding-bottom: 5px;">
-                <div class="inner-content">
-                    <div class="window-list elite-timer-wnd">
-                        <div class="list npc-list" id="rzabboard-timer-content">
-                            <!-- Zawartość generowana dynamicznie -->
-                        </div>
-                    </div>
-                </div>
-            </div>
-            <div class="c-window__bottom-bar"><div class="interface-element-bottom-bar-background-stretch"></div></div>
-
-            <div class="close-button-corner-decor" style="z-index: 2147483647;">
-                <button type="button" class="close-button" id="rzab-timer-close" title="Zamknij (Otwórz ponownie klikając PPM na żabę)"><div class="ie-icon ie-icon-close"></div></button>
-            </div>
-            <div class="border-image"></div>
-
-            <!-- Przyciski wycentrowane z lewej strony okna -->
-            <div class="transparent-window-buttons-menu" style="left: 8px; right: auto; width: auto; pointer-events: auto; z-index: 2147483647; display: flex; align-items: center; gap: 6px; top: 4px; position: absolute;">
-                <div class="manage-configuration-button settings-button rzab-btn-tooltip" data-tooltip="Schowaj obstawione" id="rzab-settings-toggle" style="position: relative !important; right: auto !important; top: auto !important; margin: 0 !important; cursor: pointer; display: block !important;"></div>
-                <div class="manage-hamburger-button rzab-btn-tooltip" data-tooltip="Zwiń respy" id="rzab-maps-toggle" style="position: relative !important; right: auto !important; top: auto !important; margin: 0 !important; cursor: pointer; display: block !important;">
-                    <div class="ie-icon ie-icon-menu" style="position: relative !important; right: auto !important; top: auto !important; margin: 0 !important;"></div>
-                </div>
-            </div>
-        `;
-
-        document.body.appendChild(timerEl);
-
-        let resizeObserver = new ResizeObserver(entries => {
-            for (let entry of entries) {
-                localStorage.setItem('rzab_timer_width', entry.target.style.width);
-            }
-        });
-        resizeObserver.observe(timerEl);
-
-        document.getElementById('rzab-timer-close').addEventListener('click', (e) => {
-            e.stopPropagation(); e.preventDefault();
-            timerEl.style.display = 'none';
-            localStorage.setItem('rzab_timer_visible', 'false');
-        });
-
-        // Ukryj Obstawione Mapy (Zębatka)
-        let settingsBtn = document.getElementById('rzab-settings-toggle');
-        let hideCovered = localStorage.getItem('rzab_timer_hide_covered') === 'true';
-        if(hideCovered && settingsBtn) settingsBtn.style.filter = "sepia(1) hue-rotate(90deg) saturate(3)";
-
-        settingsBtn.addEventListener('click', (e) => {
-            e.stopPropagation(); e.preventDefault();
-            let state = localStorage.getItem('rzab_timer_hide_covered') === 'true';
-            localStorage.setItem('rzab_timer_hide_covered', !state);
-            settingsBtn.style.filter = !state ? "sepia(1) hue-rotate(90deg) saturate(3)" : "none";
-            showCornerNotification(!state ? "⚙️ Ukrywanie obstawionych map w Tooltipie WŁĄCZONE" : "⚙️ Ukrywanie obstawionych map w Tooltipie WYŁĄCZONE", !state ? "#10b981" : "#f59e0b");
-        });
-
-        // Krótki Tooltip (Hamburger)
-        let mapsBtn = document.getElementById('rzab-maps-toggle');
-        let hideMaps = localStorage.getItem('rzab_timer_hide_maps') === 'true';
-        if(hideMaps && mapsBtn) mapsBtn.style.filter = "sepia(1) hue-rotate(90deg) saturate(3)";
-
-        mapsBtn.addEventListener('click', (e) => {
-            e.stopPropagation(); e.preventDefault();
-            let state = localStorage.getItem('rzab_timer_hide_maps') === 'true';
-            localStorage.setItem('rzab_timer_hide_maps', !state);
-            mapsBtn.style.filter = !state ? "sepia(1) hue-rotate(90deg) saturate(3)" : "none";
-            showCornerNotification(!state ? "📜 Krótki Tooltip WŁĄCZONY" : "📜 Pełny Tooltip WŁĄCZONY", !state ? "#10b981" : "#f59e0b");
-        });
-
-        timerEl.querySelectorAll('#rzab-settings-toggle, #rzab-maps-toggle, #rzab-timer-close').forEach(btn => {
-            btn.addEventListener('mousedown', e => e.stopPropagation());
-        });
-
-        let header = timerEl.querySelector('.header-label-positioner');
-        let isDragging = false, sX, sY, iL, iT;
-        header.addEventListener('mousedown', (e) => {
-            if (e.button !== 0) return;
-            isDragging = false; sX = e.clientX; sY = e.clientY;
-            let rect = timerEl.getBoundingClientRect();
-            iL = rect.left; iT = rect.top;
-            header.style.cursor = "grabbing";
-
-            function onMove(mE) {
-                let dx = mE.clientX - sX; let dy = mE.clientY - sY;
-                if (Math.abs(dx) > 2 || Math.abs(dy) > 2) isDragging = true;
-                if (isDragging) {
-                    timerEl.style.left = (iL + dx) + 'px';
-                    timerEl.style.top = (iT + dy) + 'px';
-                }
-            }
-            function onUp() {
-                document.removeEventListener('mousemove', onMove);
-                document.removeEventListener('mouseup', onUp);
-                header.style.cursor = "grab";
-                if (isDragging) {
-                    localStorage.setItem('rzab_timer_left', timerEl.style.left);
-                    localStorage.setItem('rzab_timer_top', timerEl.style.top);
-                }
-            }
-            document.addEventListener('mousemove', onMove);
-            document.addEventListener('mouseup', onUp);
-        });
-    }
-
-    // Aktualizacja wierszy w Timerze (BOSSY NIGDY NIE ZNIKAJĄ)
-    window.rzabUpdateTimerUI = function() {
-        const content = document.getElementById('rzabboard-timer-content');
-        if (!content) return;
-
-        const now = Math.floor(Date.now() / 1000);
-        let html = '';
-        let hasEvents = false;
-
-        let sortedHeroes = [];
-        for (const [npc, conf] of Object.entries(configData)) {
-            if (conf.isEvent) {
-                sortedHeroes.push({ npc, conf, info: heroesData[npc] || { last_kill: 0, checked_maps: {} } });
-            }
-        }
-
-        sortedHeroes.sort((a, b) => {
-            function getScore(c, i) {
-                if(i.last_kill === 0) return { g: 3, v: 0 };
-                let wS = i.last_kill + c.min; let wE = i.last_kill + c.max;
-                if (now > wE) return { g: 1, v: now - wE };
-                if (now >= wS && now <= wE) return { g: 2, v: wE - now };
-                return { g: 3, v: wS - now };
-            }
-            let sA = getScore(a.conf, a.info);
-            let sB = getScore(b.conf, b.info);
-            if (sA.g !== sB.g) return sA.g - sB.g;
-            if (sA.g === 1) return sB.v - sA.v;
-            return sA.v - sB.v;
-        });
-
-        sortedHeroes.forEach(item => {
-            const npc = item.npc; const conf = item.conf; const info = item.info;
-            const lk = info.last_kill; const wStart = lk + conf.min; const wEnd = lk + conf.max;
-
-            let timeStr = ""; let color = "#ccc"; let status = ""; let mapsStatus = "";
-
-            let totalMaps = 0; let checkedMaps = 0;
-
-            if (conf.maps && conf.maps.length > 0) {
+        let html = `<div class="content" style="width:100%;box-sizing:border-box;text-align:center;"><span class="elite_timer_tip_name" style="margin-bottom:8px;display:block;font-size:14px;">${npc} ${conf.level?`(${conf.level}lvl)`:''}</span><span class="elite_timer_tip_date" style="margin-top:5px;display:block;">Respawn Time</span><span class="elite_timer_tip_date text-orange">Min: ${fmtAbs(wS)}</span><span class="elite_timer_tip_date">Max: ${fmtAbs(wE)}</span>`;
+        if(!hMaps) {
+            html += `<br>`;
+            if(conf.maps?.length) {
+                html += `<span class="elite_timer_tip_date" style="margin-top:5px;display:block;color:#b4b4b4;">Lokalizacje respu${hCov?' (Wolne/Luki)':' (Obstawienie)'}:</span>`;
+                let rCount = 0;
                 conf.maps.forEach(m => {
-                    if (!m.startsWith('//')) {
-                        totalMaps++;
-                        let checkTs = (info.checked_maps && info.checked_maps[m]) ? info.checked_maps[m].ts : 0;
-                        let diff = checkTs === 0 ? 999999 : (now - checkTs);
-
-                        if (diff <= (conf.colorOrange || 300)) {
-                            checkedMaps++;
-                        }
+                    if(!m.startsWith('//')) {
+                        let mClean = m.replace(/^[-*•\s]+/, '').trim(), cTs = info.checked_maps[m]?.ts || 0, by = info.checked_maps[m]?.by || '', diff = cTs===0?999999:now-cTs;
+                        let isCov = diff<=(conf.colorGreen||60), dCol = isCov?"#10b981":(diff<=(conf.colorOrange||300)?"#f59e0b":"#ef4444");
+                        if (hCov && isCov) return;
+                        rCount++;
+                        html += `<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;font-size:11px;margin-top:3px;width:100%;"><div style="display:flex;align-items:center;min-width:0;flex:1;"><span style="color:${dCol};font-size:14px;line-height:10px;margin-right:5px;flex-shrink:0;">•</span><span class="elite_timer_tip_map" style="display:inline-block;padding:0;background:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;width:100%;text-align:left!important;" title="${mClean}">${mClean}</span></div><div style="color:#888;text-align:right;white-space:nowrap;flex-shrink:0;">${timeAgo(cTs,now)} ${by?`<span style="color:#aaa;">(${by})</span>`:''}</div></div>`;
                     }
                 });
-            }
-
-            hasEvents = true;
-
-            if (lk === 0) {
-                status = "Brak danych"; color = "#64748b";
-            } else if (now < wStart) {
-                timeStr = formatTimeLeft(wStart - now);
-                status = timeStr; color = "#94a3b8";
-            } else if (now <= wEnd) {
-                timeStr = formatTimeLeft(wEnd - now);
-                status = timeStr; color = "#f59e0b";
-                if (totalMaps > 0) {
-                    let mColor = checkedMaps === totalMaps ? "#10b981" : (checkedMaps > 0 ? "#fbbf24" : "#ef4444");
-                    mapsStatus = `<span style="color:${mColor}; font-size:11px; margin-left:5px;">[${checkedMaps}/${totalMaps}]</span>`;
-                }
-            } else {
-                let overTime = now - wEnd;
-                timeStr = "-" + formatTimeLeft(overTime);
-                status = timeStr;
-                color = "#ef4444";
-                if (totalMaps > 0) {
-                    let mColor = checkedMaps === totalMaps ? "#10b981" : (checkedMaps > 0 ? "#fbbf24" : "#ef4444");
-                    mapsStatus = `<span style="color:${mColor}; font-size:11px; margin-left:5px;">[${checkedMaps}/${totalMaps}]</span>`;
-                }
-            }
-
-            html += `
-                <div class="row tw-list-item do-action-cursor short rzab-timer-row" data-npc="${npc}">
-                    <div class="col" style="flex: 1.5; justify-content: flex-start; display: flex; align-items: center; padding-left: 5px;">
-                        <div class="name cell" style="text-align: left !important; width: 100%;">
-                            <div class="name-val" style="color: ${color}; text-shadow: 1px 1px 0 #000; font-size: 13px; text-align: left !important; width: 100%; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">[E] ${npc}</div>
-                        </div>
-                    </div>
-                    <div class="col">
-                        <div class="time cell">
-                            <div class="time-val" style="color: ${color}; font-weight: bold; text-shadow: 1px 1px 0 #000; font-size: 13px;">${status} ${mapsStatus}</div>
-                        </div>
-                    </div>
-                </div>
-            `;
-        });
-
-        if (!hasEvents) {
-            html = `<div style="text-align:center; padding:15px; font-size:12px; color:#777;">Brak herosów do wyświetlenia</div>`;
+                if(rCount===0 && hCov) html += `<span class="elite_timer_tip_map" style="text-align:center!important;display:block;color:#10b981;margin-top:5px;">Wszystkie respy obstawione.</span>`;
+            } else html += `<span class="elite_timer_tip_map" style="text-align:left!important;display:block;">Brak przypisanych map.</span>`;
         }
-        content.innerHTML = html;
+        tEl.innerHTML = html + `</div>`;
+    });
+    document.addEventListener('mousemove', e => { if(tEl.style.display==='block') { let x=e.clientX+15, y=e.clientY+15; tEl.style.left = (x+tEl.offsetWidth>window.innerWidth ? e.clientX-tEl.offsetWidth-10 : x)+'px'; tEl.style.top = (y+tEl.offsetHeight>window.innerHeight ? e.clientY-tEl.offsetHeight-10 : y)+'px'; }});
+    document.addEventListener('mouseout', e => { if(e.target.closest('.rzab-timer-row')) tEl.style.display='none'; });
+
+    // --- DRAG HELPER ---
+    function makeDraggable(el, handle, kL, kT, onDblClick = null, onSingleClick = null) {
+        let isDrag = false, sX, sY, iL, iT, clkTimer = null;
+        handle.addEventListener('mousedown', e => {
+            if (e.button !== 0) return;
+            isDrag = false; sX = e.clientX; sY = e.clientY; iL = el.getBoundingClientRect().left; iT = el.getBoundingClientRect().top;
+            handle.style.cursor = "grabbing";
+            let onMove = me => { let dx=me.clientX-sX, dy=me.clientY-sY; if(Math.abs(dx)>3||Math.abs(dy)>3) isDrag=true; if(isDrag){el.style.left=(iL+dx)+'px';el.style.top=(iT+dy)+'px';} };
+            let onUp = ue => {
+                document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp); handle.style.cursor = "grab";
+                if (isDrag) { lsSet(kL, el.style.left); lsSet(kT, el.style.top); }
+                else if (ue.detail===1 && onSingleClick) clkTimer = setTimeout(onSingleClick, 250);
+                else if (ue.detail===2 && onDblClick) { clearTimeout(clkTimer); onDblClick(); }
+            };
+            document.addEventListener('mousemove', onMove); document.addEventListener('mouseup', onUp);
+        });
+    }
+
+    // --- UI CREATION ---
+    function createUI() {
+        if (!$('rzabboard-native-widget')) {
+            let w = document.createElement('div');
+            w.id = 'rzabboard-native-widget'; w.className = "widget-button green widget-in-interface-bar"; w.title = "LPM: Panel | PPM: Timer | 2xLPM: Reset";
+            w.style.cssText = `width:44px!important;height:44px!important;display:flex!important;align-items:center!important;justify-content:center!important;background-image:linear-gradient(#396b29,#12210d)!important;box-shadow:inset 0 0 1px 1px #cecece,inset 0 0 0 3px #0c0d0d!important;border:1px solid #0c0d0d!important;border-radius:4px!important;cursor:grab!important;z-index:2147483646!important;position:fixed!important;left:${lsGet('rzab_widget_left','150px')}!important;top:${lsGet('rzab_widget_top','15px')}!important;user-select:none;`;
+            w.innerHTML = `<div class="icon" style="display:flex;align-items:center;justify-content:center;font-size:22px;filter:drop-shadow(0 1px 2px rgba(0,0,0,0.9));pointer-events:none;">🐸</div>`;
+            document.body.appendChild(w);
+            w.addEventListener('contextmenu', e => { e.preventDefault(); let t = $('rzabboard-event-timer'); if(t) { let h = t.style.display==='none'; t.style.display = h?'block':'none'; lsSet('rzab_timer_visible', h); notify(`Timer ${h?'pokazany':'ukryty'}.`); }});
+            makeDraggable(w, w, 'rzab_widget_left', 'rzab_widget_top', () => { lsSet('rzab_timer_left','200px'); lsSet('rzab_timer_top','80px'); let t=$('rzabboard-event-timer'); if(t){t.style.left='200px';t.style.top='80px';} notify("🐸 Zresetowano Timer!"); }, () => window.open(URLS.panel, "_blank"));
+        }
+
+        if (!$('rzabboard-event-timer')) {
+            let t = document.createElement('div');
+            t.id = 'rzabboard-event-timer'; t.className = 'c-window border-window transparent elite-timer'; t.setAttribute('data-opacity-lvl', '3');
+            t.style.cssText = `touch-action:none;position:absolute;z-index:2147483645;display:${lsGet('rzab_timer_visible','true')!=='false'?'block':'none'};left:${lsGet('rzab_timer_left','200px')};top:${lsGet('rzab_timer_top','80px')};width:${lsGet('rzab_timer_width','340px')};min-width:250px;max-width:600px;resize:horizontal;overflow:visible!important;height:auto;`;
+            t.innerHTML = `<div class="header-label-positioner" style="cursor:grab;"><div class="draggable-window-element pointer-draggable-handle"></div><div class="header-label"><div class="left-decor"></div><div class="right-decor"></div><div class="text" name="Timer">Event Timer</div></div></div><div class="content" style="padding-bottom:5px;"><div class="inner-content"><div class="window-list elite-timer-wnd"><div class="list npc-list" id="rzabboard-timer-content"></div></div></div></div><div class="c-window__bottom-bar"><div class="interface-element-bottom-bar-background-stretch"></div></div><div class="close-button-corner-decor" style="z-index:2147483647;"><button type="button" class="close-button" id="rzab-timer-close" title="Zamknij"><div class="ie-icon ie-icon-close"></div></button></div><div class="border-image"></div><div class="transparent-window-buttons-menu" style="left:8px;right:auto;width:auto;pointer-events:auto;z-index:2147483647;display:flex;align-items:center;gap:6px;top:4px;position:absolute;"><div class="manage-configuration-button settings-button rzab-btn-tooltip" data-tooltip="Schowaj obstawione" id="rzab-settings-toggle" style="position:relative!important;right:auto!important;top:auto!important;margin:0!important;cursor:pointer;display:block!important;"></div><div class="manage-hamburger-button rzab-btn-tooltip" data-tooltip="Zwiń respy" id="rzab-maps-toggle" style="position:relative!important;right:auto!important;top:auto!important;margin:0!important;cursor:pointer;display:block!important;"><div class="ie-icon ie-icon-menu" style="position:relative!important;right:auto!important;top:auto!important;margin:0!important;"></div></div></div>`;
+            document.body.appendChild(t);
+            new ResizeObserver(e => lsSet('rzab_timer_width', e[0].target.style.width)).observe(t);
+
+            $('rzab-timer-close').onclick = (e) => { e.stopPropagation(); t.style.display='none'; lsSet('rzab_timer_visible', 'false'); };
+
+            const setupBtn = (id, key, msgOn, msgOff) => {
+                let b = $(id), state = lsGet(key)==='true';
+                if(state) b.style.filter = "sepia(1) hue-rotate(90deg) saturate(3)";
+                b.onclick = (e) => { e.stopPropagation(); state=!state; lsSet(key, state); b.style.filter = state?"sepia(1) hue-rotate(90deg) saturate(3)":"none"; notify(state?msgOn:msgOff, state?"#10b981":"#f59e0b"); };
+                b.onmousedown = e => e.stopPropagation();
+            };
+            setupBtn('rzab-settings-toggle', 'rzab_timer_hide_covered', "⚙️ Ukrywanie obstawionych WŁĄCZONE", "⚙️ Ukrywanie obstawionych WYŁĄCZONE");
+            setupBtn('rzab-maps-toggle', 'rzab_timer_hide_maps', "📜 Krótki Tooltip WŁĄCZONY", "📜 Pełny Tooltip WŁĄCZONY");
+            $('rzab-timer-close').onmousedown = e => e.stopPropagation();
+            makeDraggable(t, t.querySelector('.header-label-positioner'), 'rzab_timer_left', 'rzab_timer_top');
+        }
+    }
+
+    // --- LOGIC ---
+    window.rzabUpdateTimerUI = function() {
+        if (!$('rzabboard-timer-content')) return;
+        let now = Math.floor(Date.now()/1000), html = '', arr = [];
+        for (const [npc, conf] of Object.entries(configData)) if(conf.isEvent) arr.push({npc, conf, info: heroesData[npc] || {last_kill:0, checked_maps:{}}});
+
+        arr.sort((a,b) => {
+            let gS = (c,i) => { if(i.last_kill===0) return {g:3,v:0}; let ws=i.last_kill+c.min, we=i.last_kill+c.max; return now>we ? {g:1,v:now-we} : (now>=ws&&now<=we ? {g:2,v:we-now} : {g:3,v:ws-now}); };
+            let sA=gS(a.conf,a.info), sB=gS(b.conf,b.info); return sA.g!==sB.g ? sA.g-sB.g : (sA.g===1 ? sB.v-sA.v : sA.v-sB.v);
+        }).forEach(i => {
+            let lk=i.info.last_kill, wS=lk+i.conf.min, wE=lk+i.conf.max, tMaps=0, cMaps=0, col="#ccc", st="", mst="";
+            if(i.conf.maps) i.conf.maps.forEach(m => { if(!m.startsWith('//')){ tMaps++; if((i.info.checked_maps[m]?.ts?now-i.info.checked_maps[m].ts:999999)<=(i.conf.colorOrange||300)) cMaps++; }});
+            if(lk===0) { st="Brak danych"; col="#64748b"; }
+            else if(now<wS) { st=fmtTime(wS-now); col="#94a3b8"; }
+            else { st=(now<=wE?"":"-")+fmtTime(Math.abs(wE-now)); col=now<=wE?"#f59e0b":"#ef4444"; if(tMaps>0) mst=`<span style="color:${cMaps===tMaps?"#10b981":(cMaps>0?"#fbbf24":"#ef4444")};font-size:11px;margin-left:5px;">[${cMaps}/${tMaps}]</span>`; }
+            html += `<div class="row tw-list-item do-action-cursor short rzab-timer-row" data-npc="${i.npc}"><div class="col" style="flex:1.5;justify-content:flex-start;display:flex;align-items:center;padding-left:5px;"><div class="name cell" style="text-align:left!important;width:100%;"><div class="name-val" style="color:${col};text-shadow:1px 1px 0 #000;font-size:13px;text-align:left!important;width:100%;display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">[E] ${i.npc}</div></div></div><div class="col"><div class="time cell"><div class="time-val" style="color:${col};font-weight:bold;text-shadow:1px 1px 0 #000;font-size:13px;">${st} ${mst}</div></div></div></div>`;
+        });
+        $('rzabboard-timer-content').innerHTML = html || `<div style="text-align:center;padding:15px;font-size:12px;color:#777;">Brak herosów do wyświetlenia</div>`;
     };
 
+    function fetchData() {
+        req(URLS.conf+"?_t="+Date.now(), "GET", res => { if(res.status===200) try { configData=JSON.parse(res.responseText); heroMaps={}; for(let h in configData) configData[h].maps.forEach(m => {if(!m.startsWith('//')) heroMaps[m]=h;}); } catch(e){} });
+        req(URLS.data+"?_t="+Date.now(), "GET", res => { if(res.status===200) try { heroesData=JSON.parse(res.responseText); } catch(e){} });
+    }
+
+    fetchData(); setInterval(fetchData, 5000); setTimeout(createUI, 1500);
     setInterval(() => {
-        let timer = document.getElementById('rzabboard-event-timer');
-        if (!timer || !document.body.contains(timer)) createEventTimer();
-        window.rzabUpdateTimerUI();
+        let t = $('rzabboard-event-timer'); if(!t || !document.body.contains(t)) createUI(); window.rzabUpdateTimerUI();
     }, 1000);
 
-    // ================= GŁÓWNA LOGIKA SIECIOWA =================
-    function fetchConfigAndData() {
-        GM_xmlhttpRequest({
-            method: "GET",
-            url: CONFIG_URL + "?_t=" + Date.now(),
-            onload: function(res) {
-                if (res.status === 200) {
-                    try {
-                        configData = JSON.parse(res.responseText);
-                        let newHeroMaps = {};
-                        for (let heroName in configData) {
-                            configData[heroName].maps.forEach(m => {
-                                if(!m.startsWith('//')) newHeroMaps[m] = heroName;
-                            });
-                        }
-                        heroMaps = newHeroMaps;
-                    } catch(e) {}
-                }
-            }
-        });
-
-        GM_xmlhttpRequest({
-            method: "GET",
-            url: HEROES_URL + "?_t=" + Date.now(),
-            onload: function(res) {
-                if (res.status === 200) {
-                    try { heroesData = JSON.parse(res.responseText); } catch(e) {}
-                }
-            }
-        });
-    }
-
-    fetchConfigAndData();
-    setInterval(fetchConfigAndData, 5000);
-    setTimeout(createPanelWidget, 1500);
-
-    function sendHeroData(action, npcName, mapName, heroName) {
-        const formData = new URLSearchParams();
-        formData.append('action', action);
-        formData.append('npc', npcName);
-        formData.append('map', mapName);
-        formData.append('nick', heroName);
-
-        GM_xmlhttpRequest({
-            method: "POST",
-            url: API_URL,
-            data: formData.toString(),
-            headers: { "Content-Type": "application/x-www-form-urlencoded" },
-            onload: function(res) {
-                if(action === 'auto_kill' && res.status === 200) {
-                    showCornerNotification(`⚔️ Zapisano ubicie: ${npcName}!`);
-                    fetchConfigAndData();
-                }
-            }
-        });
-    }
-
     setInterval(() => {
-        let currentMap = "";
-        let currentNick = "";
-        let npcs = null;
+        let cmap="", cnick="", npcs=null, now=Date.now();
+        if(typeof Engine!=='undefined' && Engine.map && Engine.hero) { cmap=Engine.map.d.name; cnick=Engine.hero.d.nick; npcs=Engine.npcs?.check(); }
+        else if(typeof map!=='undefined' && map.name && typeof hero!=='undefined') { cmap=map.name; cnick=hero.nick; npcs=typeof g!=='undefined'?g.npc:null; }
+        if(!cmap || !cnick) return;
 
-        if (typeof Engine !== 'undefined' && Engine.map && Engine.hero) {
-            currentMap = Engine.map.d.name;
-            currentNick = Engine.hero.d.nick;
-            if (Engine.npcs) npcs = Engine.npcs.check();
-        } else if (typeof map !== 'undefined' && map.name && typeof hero !== 'undefined') {
-            currentMap = map.name;
-            currentNick = hero.nick;
-            if (typeof g !== 'undefined' && g.npc) npcs = g.npc;
-        }
+        let exp = heroMaps[cmap];
+        if(cmap!==lastMap || now-lastPingTime>5000) { lastMap=cmap; lastPingTime=now; req(URLS.api, "POST", null, new URLSearchParams({action:exp?'camp':'online', npc:exp||'', map:cmap, nick:cnick}).toString()); }
 
-        if (!currentMap || !currentNick) return;
-
-        const now = Date.now();
-        const expectedHero = heroMaps[currentMap];
-
-        if (currentMap !== lastMap || now - lastPingTime > 5000) {
-            lastMap = currentMap;
-            lastPingTime = now;
-            sendHeroData(expectedHero ? 'camp' : 'online', expectedHero || '', currentMap, currentNick);
-        }
-
-        if (expectedHero && npcs) {
-            let isTrackedHeroStillHere = false;
-
-            for (const id in npcs) {
-                const npc = npcs[id];
-                const nick = npc.d && npc.d.nick ? npc.d.nick : (npc.nick || "");
-                const type = npc.d && npc.d.wt !== undefined ? npc.d.wt : (npc.wt || 0);
-
-                if (nick === expectedHero && type > 79) {
-                    if (!reportedNpcs.has(id)) {
-                        reportedNpcs.add(id);
-                        sendHeroData('found', expectedHero, currentMap, currentNick);
-                        console.log(`[Herosi] ZNALEZIONO: ${expectedHero}! Wysłano powiadomienie.`);
-                    }
-
-                    if (!trackedHero) {
-                        trackedHero = { id: id, name: expectedHero, mapName: currentMap };
-                    }
-
-                    if (trackedHero && trackedHero.id === id) {
-                        isTrackedHeroStillHere = true;
-                    }
+        if(exp && npcs) {
+            let stillHere = false;
+            for(let id in npcs) {
+                let npc=npcs[id], nick=npc.d?.nick||npc.nick||"", type=npc.d?.wt??npc.wt??0;
+                if(nick===exp && type>79) {
+                    if(!reportedNpcs.has(id)) { reportedNpcs.add(id); req(URLS.api, "POST", null, new URLSearchParams({action:'found', npc:exp, map:cmap, nick:cnick}).toString()); }
+                    if(!trackedHero) trackedHero = {id, name:exp, mapName:cmap};
+                    if(trackedHero.id===id) stillHere = true;
                 }
             }
-
-            if (trackedHero) {
-                if (currentMap !== trackedHero.mapName) {
-                    trackedHero = null;
-                } else if (!isTrackedHeroStillHere) {
-                    console.log(`[Herosi] ZNIKNĄŁ: ${trackedHero.name}! Wysyłam reset...`);
-                    sendHeroData('auto_kill', trackedHero.name, currentMap, currentNick);
-                    reportedNpcs.delete(trackedHero.id);
-                    trackedHero = null;
-                }
+            if(trackedHero) {
+                if(cmap!==trackedHero.mapName) trackedHero = null;
+                else if(!stillHere) { req(URLS.api, "POST", r => {if(r.status===200){notify(`⚔️ Zapisano ubicie: ${trackedHero.name}!`); fetchData();}}, new URLSearchParams({action:'auto_kill', npc:trackedHero.name, map:cmap, nick:cnick}).toString()); reportedNpcs.delete(trackedHero.id); trackedHero=null; }
             }
-        } else if (trackedHero) {
-            trackedHero = null;
-        }
-
+        } else if(trackedHero) trackedHero=null;
     }, 500);
 })();
