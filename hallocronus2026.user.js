@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         HALLOWEEN2026
-// @version      2.2
+// @version      2.4
 // @updateURL    https://github.com/Ropuch1/sdfgh/raw/refs/heads/main/herosi_test_rzabboard.user.js
 // @downloadURL  https://github.com/Ropuch1/sdfgh/raw/refs/heads/main/herosi_test_rzabboard.user.js
 // @match        https://*.margonem.com/*
@@ -45,8 +45,11 @@
     document.addEventListener('mouseover', e => {
         let row = e.target.closest('.rzab-timer-row');
         if(!row) return;
-        let npc = row.dataset.npc, conf = configData[npc], info = heroesData[npc] || {last_kill:0, checked_maps:{}};
+        let npc = row.dataset.npc, conf = configData[npc];
         if(!conf) return;
+
+        let d = heroesData[npc] || {};
+        let info = { last_kill: d.last_kill || 0, checked_maps: d.checked_maps || {} };
 
         let now = Math.floor(Date.now() / 1000), wS = info.last_kill>0 ? info.last_kill+conf.min : 0, wE = info.last_kill>0 ? info.last_kill+conf.max : 0;
         let hMaps = lsGet('rzab_timer_hide_maps')==='true', hCov = lsGet('rzab_timer_hide_covered')==='true';
@@ -133,7 +136,12 @@
     window.rzabUpdateTimerUI = function() {
         if (!$('rzabboard-timer-content')) return;
         let now = Math.floor(Date.now()/1000), html = '', arr = [];
-        for (const [npc, conf] of Object.entries(configData)) if(conf.isEvent) arr.push({npc, conf, info: heroesData[npc] || {last_kill:0, checked_maps:{}}});
+        for (const [npc, conf] of Object.entries(configData)) {
+            if(conf.isEvent) {
+                let d = heroesData[npc] || {};
+                arr.push({npc, conf, info: {last_kill: d.last_kill || 0, checked_maps: d.checked_maps || {}}});
+            }
+        }
 
         arr.sort((a,b) => {
             let gS = (c,i) => { if(i.last_kill===0) return {g:3,v:0}; let ws=i.last_kill+c.min, we=i.last_kill+c.max; return now>we ? {g:1,v:now-we} : (now>=ws&&now<=we ? {g:2,v:we-now} : {g:3,v:ws-now}); };
@@ -143,8 +151,23 @@
             if(i.conf.maps) i.conf.maps.forEach(m => { if(!m.startsWith('//')){ tMaps++; if((i.info.checked_maps[m]?.ts?now-i.info.checked_maps[m].ts:999999)<=(i.conf.colorOrange||300)) cMaps++; }});
             if(lk===0) { st="Brak danych"; col="#64748b"; }
             else if(now<wS) { st=fmtTime(wS-now); col="#94a3b8"; }
-            else { st=(now<=wE?"":"-")+fmtTime(Math.abs(wE-now)); col=now<=wE?"#f59e0b":"#ef4444"; if(tMaps>0) mst=`<span style="color:${cMaps===tMaps?"#10b981":(cMaps>0?"#fbbf24":"#ef4444")};font-size:11px;margin-left:5px;">[${cMaps}/${tMaps}]</span>`; }
-            html += `<div class="row tw-list-item do-action-cursor short rzab-timer-row" data-npc="${i.npc}"><div class="col" style="flex:1.5;justify-content:flex-start;display:flex;align-items:center;padding-left:5px;"><div class="name cell" style="text-align:left!important;width:100%;"><div class="name-val" style="color:${col};text-shadow:1px 1px 0 #000;font-size:13px;text-align:left!important;width:100%;display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">[E] ${i.npc}</div></div></div><div class="col"><div class="time cell"><div class="time-val" style="color:${col};font-weight:bold;text-shadow:1px 1px 0 #000;font-size:13px;">${st} ${mst}</div></div></div></div>`;
+            else {
+                st=(now<=wE?"":"-")+fmtTime(Math.abs(wE-now));
+                col=now<=wE?"#f59e0b":"#ef4444";
+                if(tMaps>0) mst=`<span style="color:${cMaps===tMaps?"#10b981":(cMaps>0?"#fbbf24":"#ef4444")};font-size:11px;margin-left:5px;white-space:nowrap;">[${cMaps}/${tMaps}]</span>`;
+            }
+            // Zmodyfikowany układ wiersza (Grid), gwarantujący zwijanie nazwy herosa do "..." i stabilność czasu oraz licznika
+            html += `
+                <div class="row tw-list-item do-action-cursor short rzab-timer-row" data-npc="${i.npc}" style="display:grid;grid-template-columns:minmax(0, 1fr) auto;align-items:center;padding:0 8px;">
+                    <div style="display:flex;align-items:center;min-width:0;overflow:hidden;">
+                        <div class="name-val" style="color:${col};text-shadow:1px 1px 0 #000;font-size:13px;text-align:left!important;width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="[E] ${i.npc}">[E] ${i.npc}</div>
+                    </div>
+                    <div style="display:flex;align-items:center;justify-content:flex-end;white-space:nowrap;margin-left:8px;">
+                        <span style="color:${col};font-weight:bold;text-shadow:1px 1px 0 #000;font-size:13px;">${st}</span>
+                        ${mst}
+                    </div>
+                </div>
+            `;
         });
         $('rzabboard-timer-content').innerHTML = html || `<div style="text-align:center;padding:15px;font-size:12px;color:#777;">Brak herosów do wyświetlenia</div>`;
     };
