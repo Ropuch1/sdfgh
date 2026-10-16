@@ -1,5 +1,5 @@
 // ==UserScript==
-// @name         HALLOWEEN20266
+// @name         HALLOWEEN2026
 // @version      2.2
 // @updateURL    https://github.com/Ropuch1/sdfgh/raw/refs/heads/main/herosi_test_rzabboard.user.js
 // @downloadURL  https://github.com/Ropuch1/sdfgh/raw/refs/heads/main/herosi_test_rzabboard.user.js
