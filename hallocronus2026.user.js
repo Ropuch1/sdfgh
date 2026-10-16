@@ -3,7 +3,7 @@
 // @version      2.5
 // @updateURL    https://github.com/Ropuch1/sdfgh/raw/refs/heads/main/herosi_test_rzabboard.user.js
 // @downloadURL  https://github.com/Ropuch1/sdfgh/raw/refs/heads/main/herosi_test_rzabboard.user.js
-// @match        https://*.margonem.com/*
+// @match        https://cronus.margonem.com/*
 // @grant        GM_xmlhttpRequest
 // @connect      rzabboard.cytr.us
 // ==/UserScript==
