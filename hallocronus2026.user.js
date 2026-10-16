@@ -1,9 +1,9 @@
 // ==UserScript==
 // @name         HALLOWEEN2026
-// @version      2.5
+// @version      2.6
 // @updateURL    https://github.com/Ropuch1/sdfgh/raw/refs/heads/main/herosi_test_rzabboard.user.js
 // @downloadURL  https://github.com/Ropuch1/sdfgh/raw/refs/heads/main/herosi_test_rzabboard.user.js
-// @match        https://cronus.margonem.com/*
+// @match        https://cronus.margonem.com/
 // @grant        GM_xmlhttpRequest
 // @connect      rzabboard.cytr.us
 // ==/UserScript==
@@ -80,7 +80,6 @@
         let row = e.target.closest('.rzab-timer-row');
         if(!row) return;
         let npc = row.dataset.npc;
-        // Odpala się tylko raz przy wejściu na nowy wiersz, dzięki czemu dymek nie resetuje się co sekundę
         if (hoveredNpc !== npc) {
             hoveredNpc = npc;
             renderTooltipContent(hoveredNpc);
@@ -199,7 +198,22 @@
     };
 
     function fetchData() {
-        req(URLS.conf+"?_t="+Date.now(), "GET", res => { if(res.status===200) try { configData=JSON.parse(res.responseText); heroMaps={}; for(let h in configData) configData[h].maps.forEach(m => {if(!m.startsWith('//')) heroMaps[m]=h;}); } catch(e){} });
+        req(URLS.conf+"?_t="+Date.now(), "GET", res => {
+            if(res.status===200) try {
+                configData = JSON.parse(res.responseText);
+                let newMap = {};
+                for(let h in configData) {
+                    (configData[h].maps || []).forEach(m => {
+                        if(!m.startsWith('//')) {
+                            let cleanM = m.replace(/^[-*•\s]+/, '').trim();
+                            if(!newMap[cleanM]) newMap[cleanM] = [];
+                            if(!newMap[cleanM].includes(h)) newMap[cleanM].push(h);
+                        }
+                    });
+                }
+                heroMaps = newMap;
+            } catch(e){}
+        });
         req(URLS.data+"?_t="+Date.now(), "GET", res => { if(res.status===200) try { heroesData=JSON.parse(res.responseText); } catch(e){} });
     }
 
@@ -214,23 +228,49 @@
         else if(typeof map!=='undefined' && map.name && typeof hero!=='undefined') { cmap=map.name; cnick=hero.nick; npcs=typeof g!=='undefined'?g.npc:null; }
         if(!cmap || !cnick) return;
 
-        let exp = heroMaps[cmap];
-        if(cmap!==lastMap || now-lastPingTime>5000) { lastMap=cmap; lastPingTime=now; req(URLS.api, "POST", null, new URLSearchParams({action:exp?'camp':'online', npc:exp||'', map:cmap, nick:cnick}).toString()); }
+        let expectedList = heroMaps[cmap] || [];
+        if(cmap!==lastMap || now-lastPingTime>5000) {
+            lastMap = cmap; lastPingTime = now;
+            if (expectedList.length > 0) {
+                expectedList.forEach(expHero => {
+                    req(URLS.api, "POST", null, new URLSearchParams({action:'camp', npc:expHero, map:cmap, nick:cnick}).toString());
+                });
+            } else {
+                req(URLS.api, "POST", null, new URLSearchParams({action:'online', npc:'', map:cmap, nick:cnick}).toString());
+            }
+        }
 
-        if(exp && npcs) {
+        if(expectedList.length > 0 && npcs) {
             let stillHere = false;
             for(let id in npcs) {
-                let npc=npcs[id], nick=npc.d?.nick||npc.nick||"", type=npc.d?.wt??npc.wt??0;
-                if(nick===exp && type>79) {
-                    if(!reportedNpcs.has(id)) { reportedNpcs.add(id); req(URLS.api, "POST", null, new URLSearchParams({action:'found', npc:exp, map:cmap, nick:cnick}).toString()); }
-                    if(!trackedHero) trackedHero = {id, name:exp, mapName:cmap};
-                    if(trackedHero.id===id) stillHere = true;
+                let npc = npcs[id], nick = npc.d?.nick || npc.nick || "", type = npc.d?.wt ?? npc.wt ?? 0;
+                if(expectedList.includes(nick) && type > 79) {
+                    if(!reportedNpcs.has(id)) {
+                        reportedNpcs.add(id);
+                        req(URLS.api, "POST", null, new URLSearchParams({action:'found', npc:nick, map:cmap, nick:cnick}).toString());
+                    }
+                    if(!trackedHero) trackedHero = {id: id, name: nick, mapName: cmap};
+                    if(trackedHero.id === id) stillHere = true;
                 }
             }
             if(trackedHero) {
-                if(cmap!==trackedHero.mapName) trackedHero = null;
-                else if(!stillHere) { req(URLS.api, "POST", r => {if(r.status===200){notify(`⚔️ Zapisano ubicie: ${trackedHero.name}!`); fetchData();}}, new URLSearchParams({action:'auto_kill', npc:trackedHero.name, map:cmap, nick:cnick}).toString()); reportedNpcs.delete(trackedHero.id); trackedHero=null; }
+                if(cmap !== trackedHero.mapName) {
+                    trackedHero = null;
+                } else if(!stillHere) {
+                    let killedName = trackedHero.name;
+                    let killedId = trackedHero.id;
+                    trackedHero = null;
+                    reportedNpcs.delete(killedId);
+                    req(URLS.api, "POST", r => {
+                        if(r.status===200) {
+                            notify(`⚔️ Zapisano ubicie: ${killedName}!`);
+                            fetchData();
+                        }
+                    }, new URLSearchParams({action:'auto_kill', npc:killedName, map:cmap, nick:cnick}).toString());
+                }
             }
-        } else if(trackedHero) trackedHero=null;
+        } else if(trackedHero) {
+            trackedHero = null;
+        }
     }, 500);
 })();
