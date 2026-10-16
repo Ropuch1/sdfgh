@@ -1,9 +1,9 @@
 // ==UserScript==
 // @name         HALLOWEEN2026
-// @version      2.6
+// @version      2.7
 // @updateURL    https://github.com/Ropuch1/sdfgh/raw/refs/heads/main/herosi_test_rzabboard.user.js
 // @downloadURL  https://github.com/Ropuch1/sdfgh/raw/refs/heads/main/herosi_test_rzabboard.user.js
-// @match        https://cronus.margonem.com/
+// @match        https://cronus.margonem.com/*
 // @grant        GM_xmlhttpRequest
 // @connect      rzabboard.cytr.us
 // ==/UserScript==
@@ -222,13 +222,51 @@
         let t = $('rzabboard-event-timer'); if(!t || !document.body.contains(t)) createUI(); window.rzabUpdateTimerUI();
     }, 1000);
 
+    // --- CORE LOGIC (WITH LEVEL LIMITS) ---
     setInterval(() => {
-        let cmap="", cnick="", npcs=null, now=Date.now();
-        if(typeof Engine!=='undefined' && Engine.map && Engine.hero) { cmap=Engine.map.d.name; cnick=Engine.hero.d.nick; npcs=Engine.npcs?.check(); }
-        else if(typeof map!=='undefined' && map.name && typeof hero!=='undefined') { cmap=map.name; cnick=hero.nick; npcs=typeof g!=='undefined'?g.npc:null; }
-        if(!cmap || !cnick) return;
+        let cmap="", cnick="", currentLvl = 0, npcs=null, now=Date.now();
 
-        let expectedList = heroMaps[cmap] || [];
+        // Pobieranie mapy, nicku i poziomu z zależności od interfejsu (nowy vs stary)
+        if(typeof Engine!=='undefined' && Engine.map && Engine.hero) {
+            cmap=Engine.map.d.name;
+            cnick=Engine.hero.d.nick;
+            currentLvl = Engine.hero.d.lvl;
+            npcs=Engine.npcs?.check();
+        } else if(typeof map!=='undefined' && map.name && typeof hero!=='undefined') {
+            cmap=map.name;
+            cnick=hero.nick;
+            currentLvl = hero.lvl;
+            npcs=typeof g!=='undefined'?g.npc:null;
+        }
+
+        if(!cmap || !cnick || !currentLvl) return;
+
+        let rawExpectedList = heroMaps[cmap] || [];
+        let expectedList = [];
+
+        // Filtrowanie z użyciem mechaniki serwera Cronus[cite: 1, 2, 3]
+        if (rawExpectedList.length > 0) {
+            rawExpectedList.forEach(expHero => {
+                const conf = configData[expHero];
+                if (conf && conf.level) {
+                    const bLvl = parseInt(conf.level);
+                    const pLvl = parseInt(currentLvl);
+                    let canInteract = false;
+
+                    if (conf.isEvent) {
+                         canInteract = pLvl >= Math.floor(bLvl / 2);
+                    } else {
+                         let minLvl = bLvl <= 100 ? Math.floor(bLvl / 2) : bLvl - 50;
+                         canInteract = pLvl >= minLvl && pLvl <= (bLvl + 13);
+                    }
+
+                    if (canInteract) {
+                        expectedList.push(expHero);
+                    }
+                }
+            });
+        }
+
         if(cmap!==lastMap || now-lastPingTime>5000) {
             lastMap = cmap; lastPingTime = now;
             if (expectedList.length > 0) {
@@ -244,6 +282,7 @@
             let stillHere = false;
             for(let id in npcs) {
                 let npc = npcs[id], nick = npc.d?.nick || npc.nick || "", type = npc.d?.wt ?? npc.wt ?? 0;
+
                 if(expectedList.includes(nick) && type > 79) {
                     if(!reportedNpcs.has(id)) {
                         reportedNpcs.add(id);
@@ -253,6 +292,7 @@
                     if(trackedHero.id === id) stillHere = true;
                 }
             }
+
             if(trackedHero) {
                 if(cmap !== trackedHero.mapName) {
                     trackedHero = null;
