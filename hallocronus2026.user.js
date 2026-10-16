@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         HALLOWEEN2026
-// @version      2.4
+// @version      2.5
 // @updateURL    https://github.com/Ropuch1/sdfgh/raw/refs/heads/main/herosi_test_rzabboard.user.js
 // @downloadURL  https://github.com/Ropuch1/sdfgh/raw/refs/heads/main/herosi_test_rzabboard.user.js
 // @match        https://*.margonem.com/*
@@ -14,6 +14,7 @@
     document.head.insertAdjacentHTML('beforeend', `<style>.rzab-btn-tooltip{position:relative!important}.rzab-btn-tooltip::after{content:attr(data-tooltip);position:absolute;left:100%;top:50%;transform:translateY(-50%);margin-left:10px;background:rgba(15,23,42,.95);border-left:3px solid #10b981;color:#fff;padding:4px 8px;border-radius:4px;font-size:11px;font-family:Tahoma,sans-serif;white-space:nowrap;opacity:0;visibility:hidden;pointer-events:none;transition:opacity .15s ease-in-out,visibility .15s;z-index:2147483647;box-shadow:0 2px 5px rgba(0,0,0,.5)}.rzab-btn-tooltip:hover::after{opacity:1;visibility:visible}</style>`);
 
     let heroMaps = {}, configData = {}, heroesData = {}, reportedNpcs = new Set(), lastMap = "", lastPingTime = 0, trackedHero = null;
+    let hoveredNpc = null;
 
     const $ = (id) => document.getElementById(id);
     const lsGet = (k, def) => localStorage.getItem(k) || def;
@@ -42,10 +43,8 @@
     tEl.className = 'tip-wrapper normal-tip';
     document.body.appendChild(tEl);
 
-    document.addEventListener('mouseover', e => {
-        let row = e.target.closest('.rzab-timer-row');
-        if(!row) return;
-        let npc = row.dataset.npc, conf = configData[npc];
+    function renderTooltipContent(npc) {
+        let conf = configData[npc];
         if(!conf) return;
 
         let d = heroesData[npc] || {};
@@ -75,9 +74,37 @@
             } else html += `<span class="elite_timer_tip_map" style="text-align:left!important;display:block;">Brak przypisanych map.</span>`;
         }
         tEl.innerHTML = html + `</div>`;
+    }
+
+    document.addEventListener('mouseover', e => {
+        let row = e.target.closest('.rzab-timer-row');
+        if(!row) return;
+        let npc = row.dataset.npc;
+        // Odpala się tylko raz przy wejściu na nowy wiersz, dzięki czemu dymek nie resetuje się co sekundę
+        if (hoveredNpc !== npc) {
+            hoveredNpc = npc;
+            renderTooltipContent(hoveredNpc);
+        }
     });
-    document.addEventListener('mousemove', e => { if(tEl.style.display==='block') { let x=e.clientX+15, y=e.clientY+15; tEl.style.left = (x+tEl.offsetWidth>window.innerWidth ? e.clientX-tEl.offsetWidth-10 : x)+'px'; tEl.style.top = (y+tEl.offsetHeight>window.innerHeight ? e.clientY-tEl.offsetHeight-10 : y)+'px'; }});
-    document.addEventListener('mouseout', e => { if(e.target.closest('.rzab-timer-row')) tEl.style.display='none'; });
+
+    document.addEventListener('mousemove', e => {
+        if(hoveredNpc && tEl.style.display === 'block') {
+            let x = e.clientX + 15, y = e.clientY + 15;
+            tEl.style.left = (x + tEl.offsetWidth > window.innerWidth ? e.clientX - tEl.offsetWidth - 10 : x) + 'px';
+            tEl.style.top = (y + tEl.offsetHeight > window.innerHeight ? e.clientY - tEl.offsetHeight - 10 : y) + 'px';
+        }
+    });
+
+    document.addEventListener('mouseout', e => {
+        let row = e.target.closest('.rzab-timer-row');
+        if(row) {
+            let related = e.relatedTarget;
+            if(!row.contains(related)) {
+                hoveredNpc = null;
+                tEl.style.display = 'none';
+            }
+        }
+    });
 
     // --- DRAG HELPER ---
     function makeDraggable(el, handle, kL, kT, onDblClick = null, onSingleClick = null) {
@@ -156,13 +183,12 @@
                 col=now<=wE?"#f59e0b":"#ef4444";
                 if(tMaps>0) mst=`<span style="color:${cMaps===tMaps?"#10b981":(cMaps>0?"#fbbf24":"#ef4444")};font-size:11px;margin-left:5px;white-space:nowrap;">[${cMaps}/${tMaps}]</span>`;
             }
-            // Zmodyfikowany układ wiersza (Grid), gwarantujący zwijanie nazwy herosa do "..." i stabilność czasu oraz licznika
             html += `
                 <div class="row tw-list-item do-action-cursor short rzab-timer-row" data-npc="${i.npc}" style="display:grid;grid-template-columns:minmax(0, 1fr) auto;align-items:center;padding:0 8px;">
-                    <div style="display:flex;align-items:center;min-width:0;overflow:hidden;">
-                        <div class="name-val" style="color:${col};text-shadow:1px 1px 0 #000;font-size:13px;text-align:left!important;width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="[E] ${i.npc}">[E] ${i.npc}</div>
+                    <div style="display:flex;align-items:center;min-width:0;overflow:hidden;pointer-events:none;">
+                        <div class="name-val" style="color:${col};text-shadow:1px 1px 0 #000;font-size:13px;text-align:left!important;width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">[E] ${i.npc}</div>
                     </div>
-                    <div style="display:flex;align-items:center;justify-content:flex-end;white-space:nowrap;margin-left:8px;">
+                    <div style="display:flex;align-items:center;justify-content:flex-end;white-space:nowrap;margin-left:8px;pointer-events:none;">
                         <span style="color:${col};font-weight:bold;text-shadow:1px 1px 0 #000;font-size:13px;">${st}</span>
                         ${mst}
                     </div>
