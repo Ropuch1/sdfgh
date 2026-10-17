@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         HALLOWEEN2026
-// @version      3.0
+// @version      3.1
 // @updateURL    https://github.com/Ropuch1/sdfgh/raw/refs/heads/main/herosi_test_rzabboard.user.js
 // @downloadURL  https://github.com/Ropuch1/sdfgh/raw/refs/heads/main/herosi_test_rzabboard.user.js
 // @match        https://cronus.margonem.com/*
@@ -11,7 +11,15 @@
 (function() {
     const URLS = { api: "https://rzabboard.cytr.us/herosi/save_cronus.php", conf: "https://rzabboard.cytr.us/herosi/data_cronus/config_cronus.json", data: "https://rzabboard.cytr.us/herosi/data_cronus/heroes_cronus.json", panel: "https://rzabboard.cytr.us/herosi/v2.php" };
 
-    document.head.insertAdjacentHTML('beforeend', `<style>.rzab-btn-tooltip{position:relative!important}.rzab-btn-tooltip::after{content:attr(data-tooltip);position:absolute;left:100%;top:50%;transform:translateY(-50%);margin-left:10px;background:rgba(15,23,42,.95);border-left:3px solid #10b981;color:#fff;padding:4px 8px;border-radius:4px;font-size:11px;font-family:Tahoma,sans-serif;white-space:nowrap;opacity:0;visibility:hidden;pointer-events:none;transition:opacity .15s ease-in-out,visibility .15s;z-index:2147483647;box-shadow:0 2px 5px rgba(0,0,0,.5)}.rzab-btn-tooltip:hover::after{opacity:1;visibility:visible}</style>`);
+    document.head.insertAdjacentHTML('beforeend', `<style>
+        .rzab-btn-tooltip{position:relative!important}
+        .rzab-btn-tooltip::after{content:attr(data-tooltip);position:absolute;left:100%;top:50%;transform:translateY(-50%);margin-left:10px;background:rgba(15,23,42,.95);border-left:3px solid #10b981;color:#fff;padding:4px 8px;border-radius:4px;font-size:11px;font-family:Tahoma,sans-serif;white-space:nowrap;opacity:0;visibility:hidden;pointer-events:none;transition:opacity .15s ease-in-out,visibility .15s;z-index:2147483647;box-shadow:0 2px 5px rgba(0,0,0,.5)}
+        .rzab-btn-tooltip:hover::after{opacity:1;visibility:visible}
+        #rzab-scroll-container::-webkit-scrollbar { width: 6px; }
+        #rzab-scroll-container::-webkit-scrollbar-track { background: rgba(0, 0, 0, 0.2); border-radius: 4px; }
+        #rzab-scroll-container::-webkit-scrollbar-thumb { background: #64748b; border-radius: 4px; }
+        #rzab-scroll-container::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+    </style>`);
 
     let heroMaps = {}, configData = {}, heroesData = {}, reportedNpcs = new Set(), lastMap = "", lastPingTime = 0, trackedHero = null;
     let hoveredNpc = null;
@@ -138,22 +146,51 @@
         if (!$('rzabboard-event-timer')) {
             let t = document.createElement('div');
             t.id = 'rzabboard-event-timer'; t.className = 'c-window border-window transparent elite-timer'; t.setAttribute('data-opacity-lvl', '3');
-            t.style.cssText = `touch-action:none;position:absolute;z-index:2147483645;display:${lsGet('rzab_timer_visible','true')!=='false'?'block':'none'};left:${lsGet('rzab_timer_left','200px')};top:${lsGet('rzab_timer_top','80px')};width:${lsGet('rzab_timer_width','340px')};min-width:250px;max-width:600px;resize:horizontal;overflow:visible!important;height:auto;`;
-            t.innerHTML = `<div class="header-label-positioner" style="cursor:grab;"><div class="draggable-window-element pointer-draggable-handle"></div><div class="header-label"><div class="left-decor"></div><div class="right-decor"></div><div class="text" name="Timer">Timer</div></div></div>
-            <div class="content" style="padding-bottom:5px;">
-                <div style="display:flex;justify-content:center;gap:15px;padding-bottom:4px;border-bottom:1px solid rgba(255,255,255,0.1);margin-bottom:4px;">
-                    <div id="rzab-btn-reg" style="cursor:pointer;font-size:12px;font-weight:bold;text-shadow:1px 1px 0 #000;transition:color 0.2s;">Zwykłe</div>
-                    <div id="rzab-btn-evt" style="cursor:pointer;font-size:12px;font-weight:bold;text-shadow:1px 1px 0 #000;transition:color 0.2s;">Eventowe</div>
+            t.style.cssText = `touch-action:none;position:absolute;z-index:2147483645;display:${lsGet('rzab_timer_visible','true')!=='false'?'flex':'none'};flex-direction:column;left:${lsGet('rzab_timer_left','200px')};top:${lsGet('rzab_timer_top','80px')};width:${lsGet('rzab_timer_width','340px')};height:${lsGet('rzab_timer_height','auto')};min-width:250px;min-height:100px;max-width:600px;max-height:800px;resize:both;overflow:hidden;`;
+
+            t.innerHTML = `
+            <div class="header-label-positioner" style="cursor:grab;flex-shrink:0;">
+                <div class="draggable-window-element pointer-draggable-handle"></div>
+                <div class="header-label">
+                    <div class="left-decor"></div>
+                    <div class="right-decor"></div>
+                    <div class="text" name="Timer">Timer</div>
                 </div>
-                <div class="inner-content"><div class="window-list elite-timer-wnd"><div class="list npc-list" id="rzabboard-timer-content"></div></div></div>
             </div>
-            <div class="c-window__bottom-bar"><div class="interface-element-bottom-bar-background-stretch"></div></div><div class="close-button-corner-decor" style="z-index:2147483647;"><button type="button" class="close-button" id="rzab-timer-close" title="Zamknij"><div class="ie-icon ie-icon-close"></div></button></div><div class="border-image"></div><div class="transparent-window-buttons-menu" style="left:8px;right:auto;width:auto;pointer-events:auto;z-index:2147483647;display:flex;align-items:center;gap:6px;top:4px;position:absolute;"><div class="manage-configuration-button settings-button rzab-btn-tooltip" data-tooltip="Schowaj obstawione mapy" id="rzab-settings-toggle" style="position:relative!important;right:auto!important;top:auto!important;margin:0!important;cursor:pointer;display:block!important;"></div><div class="manage-hamburger-button rzab-btn-tooltip" data-tooltip="Pokaż/Ukryj listę map" id="rzab-maps-toggle" style="position:relative!important;right:auto!important;top:auto!important;margin:0!important;cursor:pointer;display:block!important;"><div class="ie-icon ie-icon-menu" style="position:relative!important;right:auto!important;top:auto!important;margin:0!important;"></div></div></div>`;
+            <div class="content" style="padding-bottom:5px;flex:1;display:flex;flex-direction:column;min-height:0;">
+                <div style="display:flex;justify-content:center;gap:15px;padding-bottom:4px;border-bottom:1px solid rgba(255,255,255,0.1);margin-bottom:4px;flex-shrink:0;">
+                    <div id="rzab-btn-reg" style="cursor:pointer;font-size:11px;font-weight:bold;text-shadow:1px 1px 0 #000;transition:color 0.2s;">Zwykłe</div>
+                    <div id="rzab-btn-evt" style="cursor:pointer;font-size:11px;font-weight:bold;text-shadow:1px 1px 0 #000;transition:color 0.2s;">Eventowe</div>
+                </div>
+                <div class="inner-content" id="rzab-scroll-container" style="flex:1;overflow-y:auto;overflow-x:hidden;min-height:0;padding-right:2px;">
+                    <div class="window-list elite-timer-wnd" style="height:100%;">
+                        <div class="list npc-list" id="rzabboard-timer-content"></div>
+                    </div>
+                </div>
+            </div>
+            <div class="c-window__bottom-bar" style="flex-shrink:0;"><div class="interface-element-bottom-bar-background-stretch"></div></div>
+            <div class="close-button-corner-decor" style="z-index:2147483647;"><button type="button" class="close-button" id="rzab-timer-close" title="Zamknij"><div class="ie-icon ie-icon-close"></div></button></div>
+            <div class="border-image"></div>
+            <div class="transparent-window-buttons-menu" style="left:8px;right:auto;width:auto;pointer-events:auto;z-index:2147483647;display:flex;align-items:center;gap:6px;top:4px;position:absolute;">
+                <div class="manage-configuration-button settings-button rzab-btn-tooltip" data-tooltip="Schowaj obstawione mapy" id="rzab-settings-toggle" style="position:relative!important;right:auto!important;top:auto!important;margin:0!important;cursor:pointer;display:block!important;"></div>
+                <div class="manage-hamburger-button rzab-btn-tooltip" data-tooltip="Pokaż/Ukryj listę map" id="rzab-maps-toggle" style="position:relative!important;right:auto!important;top:auto!important;margin:0!important;cursor:pointer;display:block!important;"><div class="ie-icon ie-icon-menu" style="position:relative!important;right:auto!important;top:auto!important;margin:0!important;"></div></div>
+            </div>`;
+
             document.body.appendChild(t);
-            new ResizeObserver(e => lsSet('rzab_timer_width', e[0].target.style.width)).observe(t);
+            new ResizeObserver(e => {
+                lsSet('rzab_timer_width', e[0].target.style.width);
+                lsSet('rzab_timer_height', e[0].target.style.height);
+            }).observe(t);
 
             $('rzab-timer-close').onclick = (e) => { e.stopPropagation(); t.style.display='none'; lsSet('rzab_timer_visible', 'false'); };
 
-            // Obsługa przycisków map i zębatki
+            let scrollCont = $('rzab-scroll-container');
+            if (scrollCont) {
+                const stopScrollProp = (e) => { e.stopPropagation(); };
+                scrollCont.addEventListener('wheel', stopScrollProp, { passive: true });
+                scrollCont.addEventListener('DOMMouseScroll', stopScrollProp, { passive: true });
+            }
+
             const setupBtn = (id, key, msgOn, msgOff) => {
                 let b = $(id), state = lsGet(key)==='true';
                 if(state) b.style.filter = "sepia(1) hue-rotate(90deg) saturate(3)";
@@ -163,7 +200,6 @@
             setupBtn('rzab-settings-toggle', 'rzab_timer_hide_covered', "⚙️ Ukrywanie obstawionych map WŁĄCZONE", "⚙️ Ukrywanie obstawionych map WYŁĄCZONE");
             setupBtn('rzab-maps-toggle', 'rzab_timer_hide_maps', "📜 Krótki Tooltip WŁĄCZONY", "📜 Pełny Tooltip WŁĄCZONY");
 
-            // Obsługa przełączników Zwykłe / Eventowe
             let btnReg = $('rzab-btn-reg'), btnEvt =$('rzab-btn-evt');
             const updateFilterBtns = () => {
                 btnReg.style.color = lsGet('rzab_show_reg', 'true') === 'true' ? '#fbbf24' : '#64748b';
@@ -217,11 +253,11 @@
             html += `
                 <div class="row tw-list-item do-action-cursor short rzab-timer-row" data-npc="${i.npc}" style="display:grid;grid-template-columns:minmax(0, 1fr) auto;align-items:center;padding:0 8px;">
                     <div style="display:flex;align-items:center;min-width:0;overflow:hidden;pointer-events:none;">
-                        <div class="name-val" style="color:${col};text-shadow:1px 1px 0 #000;font-size:13px;text-align:left!important;width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${prefix} ${i.npc}</div>
+                        <div class="name-val" style="color:${col};text-shadow:1px 1px 0 #000;font-size:11px;text-align:left!important;width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${prefix} ${i.npc}</div>
                     </div>
                     <div style="display:flex;align-items:center;justify-content:flex-end;white-space:nowrap;margin-left:8px;pointer-events:none;">
                         ${pct}
-                        <span style="color:${col};font-weight:bold;text-shadow:1px 1px 0 #000;font-size:13px;">${st}</span>
+                        <span style="color:${col};font-weight:bold;text-shadow:1px 1px 0 #000;font-size:11px;">${st}</span>
                         ${mst}
                     </div>
                 </div>
@@ -255,7 +291,7 @@
         let t = $('rzabboard-event-timer'); if(!t || !document.body.contains(t)) createUI(); window.rzabUpdateTimerUI();
     }, 1000);
 
-    // --- CORE LOGIC (WITH LEVEL LIMITS) ---
+    // --- CORE LOGIC WITH COORDINATES ---
     setInterval(() => {
         let cmap="", cnick="", currentLvl = 0, npcs=null, now=Date.now();
 
@@ -313,14 +349,19 @@
             let stillHere = false;
             for(let id in npcs) {
                 let npc = npcs[id], nick = npc.d?.nick || npc.nick || "", type = npc.d?.wt ?? npc.wt ?? 0;
+                let nx = npc.d?.x ?? npc.x ?? "?", ny = npc.d?.y ?? npc.y ?? "?"; // Pobieranie kordów NPC
 
                 if(expectedList.includes(nick) && type > 79) {
                     if(!reportedNpcs.has(id)) {
                         reportedNpcs.add(id);
-                        req(URLS.api, "POST", null, new URLSearchParams({action:'found', npc:nick, map:cmap, nick:cnick}).toString());
+                        req(URLS.api, "POST", null, new URLSearchParams({action:'found', npc:nick, map:cmap, nick:cnick, x:nx, y:ny}).toString());
                     }
-                    if(!trackedHero) trackedHero = {id: id, name: nick, mapName: cmap};
-                    if(trackedHero.id === id) stillHere = true;
+                    if(!trackedHero) trackedHero = {id: id, name: nick, mapName: cmap, x: nx, y: ny};
+                    if(trackedHero.id === id) {
+                        stillHere = true;
+                        trackedHero.x = nx;
+                        trackedHero.y = ny;
+                    }
                 }
             }
 
@@ -330,14 +371,16 @@
                 } else if(!stillHere) {
                     let killedName = trackedHero.name;
                     let killedId = trackedHero.id;
+                    let kx = trackedHero.x;
+                    let ky = trackedHero.y;
                     trackedHero = null;
                     reportedNpcs.delete(killedId);
                     req(URLS.api, "POST", r => {
                         if(r.status===200) {
-                            notify(`⚔️ Zapisano ubicie: ${killedName}!`);
+                            notify(`⚔️ Zapisano ubicie: ${killedName}! (${kx},${ky})`);
                             fetchData();
                         }
-                    }, new URLSearchParams({action:'auto_kill', npc:killedName, map:cmap, nick:cnick}).toString());
+                    }, new URLSearchParams({action:'auto_kill', npc:killedName, map:cmap, nick:cnick, x:kx, y:ky}).toString());
                 }
             }
         } else if(trackedHero) {
