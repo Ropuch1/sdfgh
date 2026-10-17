@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         HALLOWEEN2026
-// @version      3.1
+// @version      3.2
 // @updateURL    https://github.com/Ropuch1/sdfgh/raw/refs/heads/main/herosi_test_rzabboard.user.js
 // @downloadURL  https://github.com/Ropuch1/sdfgh/raw/refs/heads/main/herosi_test_rzabboard.user.js
 // @match        https://cronus.margonem.com/*
@@ -44,7 +44,7 @@
         GM_xmlhttpRequest({ method, url, data, headers: data ? {"Content-Type": "application/x-www-form-urlencoded"} : undefined, onload });
     }
 
-    // --- TOOLTIP ---
+    // --- TOOLTIP (Dymek z mapami pod kursorem) ---
     let tEl = document.createElement('div');
     tEl.id = 'rzab-custom-tooltip';
     tEl.style.cssText = `position:fixed;display:none;z-index:2147483647;pointer-events:none;`;
@@ -60,6 +60,7 @@
 
         let now = Math.floor(Date.now() / 1000), wS = info.last_kill>0 ? info.last_kill+conf.min : 0, wE = info.last_kill>0 ? info.last_kill+conf.max : 0;
         let hMaps = lsGet('rzab_timer_hide_maps')==='true', hCov = lsGet('rzab_timer_hide_covered')==='true';
+        let hObs = lsGet('rzab_timer_hide_observers') === 'true';
 
         tEl.style.cssText = `position:fixed;display:block;z-index:2147483647;pointer-events:none;min-width:${hMaps?'200px':'300px'};width:${hMaps?'max-content':'320px'};`;
 
@@ -75,7 +76,8 @@
                         let isCov = diff<=(conf.colorGreen||60), dCol = isCov?"#10b981":(diff<=(conf.colorOrange||300)?"#f59e0b":"#ef4444");
                         if (hCov && isCov) return;
                         rCount++;
-                        html += `<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;font-size:11px;margin-top:3px;width:100%;"><div style="display:flex;align-items:center;min-width:0;flex:1;"><span style="color:${dCol};font-size:14px;line-height:10px;margin-right:5px;flex-shrink:0;">•</span><span class="elite_timer_tip_map" style="display:inline-block;padding:0;background:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;width:100%;text-align:left!important;" title="${mClean}">${mClean}</span></div><div style="color:#888;text-align:right;white-space:nowrap;flex-shrink:0;">${timeAgo(cTs,now)} ${by?`<span style="color:#aaa;">(${by})</span>`:''}</div></div>`;
+                        let observerText = (!hObs && by) ? `<span style="color:#aaa;">(${by})</span>` : '';
+                        html += `<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;font-size:11px;margin-top:3px;width:100%;"><div style="display:flex;align-items:center;min-width:0;flex:1;"><span style="color:${dCol};font-size:14px;line-height:10px;margin-right:5px;flex-shrink:0;">•</span><span class="elite_timer_tip_map" style="display:inline-block;padding:0;background:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;width:100%;text-align:left!important;" title="${mClean}">${mClean}</span></div><div style="color:#888;text-align:right;white-space:nowrap;flex-shrink:0;">${timeAgo(cTs,now)} ${observerText}</div></div>`;
                     }
                 });
                 if(rCount===0 && hCov) html += `<span class="elite_timer_tip_map" style="text-align:center!important;display:block;color:#10b981;margin-top:5px;">Wszystkie respy obstawione.</span>`;
@@ -96,9 +98,28 @@
 
     document.addEventListener('mousemove', e => {
         if(hoveredNpc && tEl.style.display === 'block') {
-            let x = e.clientX + 15, y = e.clientY + 15;
-            tEl.style.left = (x + tEl.offsetWidth > window.innerWidth ? e.clientX - tEl.offsetWidth - 10 : x) + 'px';
-            tEl.style.top = (y + tEl.offsetHeight > window.innerHeight ? e.clientY - tEl.offsetHeight - 10 : y) + 'px';
+            let tooltipWidth = tEl.offsetWidth || 320;
+            let tooltipHeight = tEl.offsetHeight || 200;
+
+            // Domyślnie próbujemy po prawej stronie kursora
+            let x = e.clientX + 15;
+            let y = e.clientY + 15;
+
+            // Jeśli dymek wychodziłby poza prawą krawędź ekranu, przerzuć go na lewą stronę kursora
+            if (x + tooltipWidth > window.innerWidth - 10) {
+                x = e.clientX - tooltipWidth - 15;
+            }
+
+            // Ochrona przed wyjściem w dół ekranu
+            if (y + tooltipHeight > window.innerHeight - 10) {
+                y = window.innerHeight - tooltipHeight - 10;
+            }
+
+            // Ochrona przed wyjściem w górę ekranu
+            if (y < 10) y = 10;
+
+            tEl.style.left = x + 'px';
+            tEl.style.top = y + 'px';
         }
     });
 
@@ -113,17 +134,33 @@
         }
     });
 
-    // --- DRAG HELPER ---
+    // --- DRAG HELPER Z BLOKADĄ WYJŚCIA POZA EKRAN ---
     function makeDraggable(el, handle, kL, kT, onDblClick = null, onSingleClick = null) {
         let isDrag = false, sX, sY, iL, iT, clkTimer = null;
         handle.addEventListener('mousedown', e => {
             if (e.button !== 0) return;
             isDrag = false; sX = e.clientX; sY = e.clientY; iL = el.getBoundingClientRect().left; iT = el.getBoundingClientRect().top;
             handle.style.cursor = "grabbing";
-            let onMove = me => { let dx=me.clientX-sX, dy=me.clientY-sY; if(Math.abs(dx)>3||Math.abs(dy)>3) isDrag=true; if(isDrag){el.style.left=(iL+dx)+'px';el.style.top=(iT+dy)+'px';} };
+            let onMove = me => {
+                let dx = me.clientX - sX, dy = me.clientY - sY;
+                if(Math.abs(dx) > 3 || Math.abs(dy) > 3) isDrag = true;
+                if(isDrag) {
+                    let newL = iL + dx;
+                    let newT = iT + dy;
+                    let maxL = window.innerWidth - el.offsetWidth;
+                    let maxT = window.innerHeight - el.offsetHeight;
+                    newL = Math.max(0, Math.min(newL, maxL));
+                    newT = Math.max(0, Math.min(newT, maxT));
+                    el.style.left = newL + 'px';
+                    el.style.top = newT + 'px';
+                }
+            };
             let onUp = ue => {
                 document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp); handle.style.cursor = "grab";
-                if (isDrag) { lsSet(kL, el.style.left); lsSet(kT, el.style.top); }
+                if (isDrag) {
+                    lsSet(kL, el.style.left);
+                    lsSet(kT, el.style.top);
+                }
                 else if (ue.detail===1 && onSingleClick) clkTimer = setTimeout(onSingleClick, 250);
                 else if (ue.detail===2 && onDblClick) { clearTimeout(clkTimer); onDblClick(); }
             };
@@ -174,6 +211,7 @@
             <div class="transparent-window-buttons-menu" style="left:8px;right:auto;width:auto;pointer-events:auto;z-index:2147483647;display:flex;align-items:center;gap:6px;top:4px;position:absolute;">
                 <div class="manage-configuration-button settings-button rzab-btn-tooltip" data-tooltip="Schowaj obstawione mapy" id="rzab-settings-toggle" style="position:relative!important;right:auto!important;top:auto!important;margin:0!important;cursor:pointer;display:block!important;"></div>
                 <div class="manage-hamburger-button rzab-btn-tooltip" data-tooltip="Pokaż/Ukryj listę map" id="rzab-maps-toggle" style="position:relative!important;right:auto!important;top:auto!important;margin:0!important;cursor:pointer;display:block!important;"><div class="ie-icon ie-icon-menu" style="position:relative!important;right:auto!important;top:auto!important;margin:0!important;"></div></div>
+                <div class="manage-configuration-button rzab-btn-tooltip" data-tooltip="Ukryj/Pokaż obstawiających" id="rzab-observers-toggle" style="position:relative!important;right:auto!important;top:auto!important;margin:0!important;cursor:pointer;display:flex!important;align-items:center;justify-content:center;font-size:10px;font-weight:bold;color:#fff;">👤</div>
             </div>`;
 
             document.body.appendChild(t);
@@ -199,6 +237,7 @@
             };
             setupBtn('rzab-settings-toggle', 'rzab_timer_hide_covered', "⚙️ Ukrywanie obstawionych map WŁĄCZONE", "⚙️ Ukrywanie obstawionych map WYŁĄCZONE");
             setupBtn('rzab-maps-toggle', 'rzab_timer_hide_maps', "📜 Krótki Tooltip WŁĄCZONY", "📜 Pełny Tooltip WŁĄCZONY");
+            setupBtn('rzab-observers-toggle', 'rzab_timer_hide_observers', "👤 Ukrywanie obstawiających WŁĄCZONE", "👤 Ukrywanie obstawiających WYŁĄCZONE");
 
             let btnReg = $('rzab-btn-reg'), btnEvt =$('rzab-btn-evt');
             const updateFilterBtns = () => {
@@ -349,7 +388,7 @@
             let stillHere = false;
             for(let id in npcs) {
                 let npc = npcs[id], nick = npc.d?.nick || npc.nick || "", type = npc.d?.wt ?? npc.wt ?? 0;
-                let nx = npc.d?.x ?? npc.x ?? "?", ny = npc.d?.y ?? npc.y ?? "?"; // Pobieranie kordów NPC
+                let nx = npc.d?.x ?? npc.x ?? "?", ny = npc.d?.y ?? npc.y ?? "?";
 
                 if(expectedList.includes(nick) && type > 79) {
                     if(!reportedNpcs.has(id)) {
