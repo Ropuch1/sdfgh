@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         HALLOWEEN2026
-// @version      2.7
+// @version      3.0
 // @updateURL    https://github.com/Ropuch1/sdfgh/raw/refs/heads/main/herosi_test_rzabboard.user.js
 // @downloadURL  https://github.com/Ropuch1/sdfgh/raw/refs/heads/main/herosi_test_rzabboard.user.js
 // @match        https://cronus.margonem.com/*
@@ -139,20 +139,40 @@
             let t = document.createElement('div');
             t.id = 'rzabboard-event-timer'; t.className = 'c-window border-window transparent elite-timer'; t.setAttribute('data-opacity-lvl', '3');
             t.style.cssText = `touch-action:none;position:absolute;z-index:2147483645;display:${lsGet('rzab_timer_visible','true')!=='false'?'block':'none'};left:${lsGet('rzab_timer_left','200px')};top:${lsGet('rzab_timer_top','80px')};width:${lsGet('rzab_timer_width','340px')};min-width:250px;max-width:600px;resize:horizontal;overflow:visible!important;height:auto;`;
-            t.innerHTML = `<div class="header-label-positioner" style="cursor:grab;"><div class="draggable-window-element pointer-draggable-handle"></div><div class="header-label"><div class="left-decor"></div><div class="right-decor"></div><div class="text" name="Timer">Event Timer</div></div></div><div class="content" style="padding-bottom:5px;"><div class="inner-content"><div class="window-list elite-timer-wnd"><div class="list npc-list" id="rzabboard-timer-content"></div></div></div></div><div class="c-window__bottom-bar"><div class="interface-element-bottom-bar-background-stretch"></div></div><div class="close-button-corner-decor" style="z-index:2147483647;"><button type="button" class="close-button" id="rzab-timer-close" title="Zamknij"><div class="ie-icon ie-icon-close"></div></button></div><div class="border-image"></div><div class="transparent-window-buttons-menu" style="left:8px;right:auto;width:auto;pointer-events:auto;z-index:2147483647;display:flex;align-items:center;gap:6px;top:4px;position:absolute;"><div class="manage-configuration-button settings-button rzab-btn-tooltip" data-tooltip="Schowaj obstawione" id="rzab-settings-toggle" style="position:relative!important;right:auto!important;top:auto!important;margin:0!important;cursor:pointer;display:block!important;"></div><div class="manage-hamburger-button rzab-btn-tooltip" data-tooltip="Zwiń respy" id="rzab-maps-toggle" style="position:relative!important;right:auto!important;top:auto!important;margin:0!important;cursor:pointer;display:block!important;"><div class="ie-icon ie-icon-menu" style="position:relative!important;right:auto!important;top:auto!important;margin:0!important;"></div></div></div>`;
+            t.innerHTML = `<div class="header-label-positioner" style="cursor:grab;"><div class="draggable-window-element pointer-draggable-handle"></div><div class="header-label"><div class="left-decor"></div><div class="right-decor"></div><div class="text" name="Timer">Timer</div></div></div>
+            <div class="content" style="padding-bottom:5px;">
+                <div style="display:flex;justify-content:center;gap:15px;padding-bottom:4px;border-bottom:1px solid rgba(255,255,255,0.1);margin-bottom:4px;">
+                    <div id="rzab-btn-reg" style="cursor:pointer;font-size:12px;font-weight:bold;text-shadow:1px 1px 0 #000;transition:color 0.2s;">Zwykłe</div>
+                    <div id="rzab-btn-evt" style="cursor:pointer;font-size:12px;font-weight:bold;text-shadow:1px 1px 0 #000;transition:color 0.2s;">Eventowe</div>
+                </div>
+                <div class="inner-content"><div class="window-list elite-timer-wnd"><div class="list npc-list" id="rzabboard-timer-content"></div></div></div>
+            </div>
+            <div class="c-window__bottom-bar"><div class="interface-element-bottom-bar-background-stretch"></div></div><div class="close-button-corner-decor" style="z-index:2147483647;"><button type="button" class="close-button" id="rzab-timer-close" title="Zamknij"><div class="ie-icon ie-icon-close"></div></button></div><div class="border-image"></div><div class="transparent-window-buttons-menu" style="left:8px;right:auto;width:auto;pointer-events:auto;z-index:2147483647;display:flex;align-items:center;gap:6px;top:4px;position:absolute;"><div class="manage-configuration-button settings-button rzab-btn-tooltip" data-tooltip="Schowaj obstawione mapy" id="rzab-settings-toggle" style="position:relative!important;right:auto!important;top:auto!important;margin:0!important;cursor:pointer;display:block!important;"></div><div class="manage-hamburger-button rzab-btn-tooltip" data-tooltip="Pokaż/Ukryj listę map" id="rzab-maps-toggle" style="position:relative!important;right:auto!important;top:auto!important;margin:0!important;cursor:pointer;display:block!important;"><div class="ie-icon ie-icon-menu" style="position:relative!important;right:auto!important;top:auto!important;margin:0!important;"></div></div></div>`;
             document.body.appendChild(t);
             new ResizeObserver(e => lsSet('rzab_timer_width', e[0].target.style.width)).observe(t);
 
             $('rzab-timer-close').onclick = (e) => { e.stopPropagation(); t.style.display='none'; lsSet('rzab_timer_visible', 'false'); };
 
+            // Obsługa przycisków map i zębatki
             const setupBtn = (id, key, msgOn, msgOff) => {
                 let b = $(id), state = lsGet(key)==='true';
                 if(state) b.style.filter = "sepia(1) hue-rotate(90deg) saturate(3)";
                 b.onclick = (e) => { e.stopPropagation(); state=!state; lsSet(key, state); b.style.filter = state?"sepia(1) hue-rotate(90deg) saturate(3)":"none"; notify(state?msgOn:msgOff, state?"#10b981":"#f59e0b"); };
                 b.onmousedown = e => e.stopPropagation();
             };
-            setupBtn('rzab-settings-toggle', 'rzab_timer_hide_covered', "⚙️ Ukrywanie obstawionych WŁĄCZONE", "⚙️ Ukrywanie obstawionych WYŁĄCZONE");
+            setupBtn('rzab-settings-toggle', 'rzab_timer_hide_covered', "⚙️ Ukrywanie obstawionych map WŁĄCZONE", "⚙️ Ukrywanie obstawionych map WYŁĄCZONE");
             setupBtn('rzab-maps-toggle', 'rzab_timer_hide_maps', "📜 Krótki Tooltip WŁĄCZONY", "📜 Pełny Tooltip WŁĄCZONY");
+
+            // Obsługa przełączników Zwykłe / Eventowe
+            let btnReg = $('rzab-btn-reg'), btnEvt =$('rzab-btn-evt');
+            const updateFilterBtns = () => {
+                btnReg.style.color = lsGet('rzab_show_reg', 'true') === 'true' ? '#fbbf24' : '#64748b';
+                btnEvt.style.color = lsGet('rzab_show_evt', 'true') === 'true' ? '#fbbf24' : '#64748b';
+            };
+            updateFilterBtns();
+            btnReg.onmousedown = (e) => { e.stopPropagation(); lsSet('rzab_show_reg', lsGet('rzab_show_reg', 'true') === 'true' ? 'false' : 'true'); updateFilterBtns(); window.rzabUpdateTimerUI(); };
+            btnEvt.onmousedown = (e) => { e.stopPropagation(); lsSet('rzab_show_evt', lsGet('rzab_show_evt', 'true') === 'true' ? 'false' : 'true'); updateFilterBtns(); window.rzabUpdateTimerUI(); };
+
             $('rzab-timer-close').onmousedown = e => e.stopPropagation();
             makeDraggable(t, t.querySelector('.header-label-positioner'), 'rzab_timer_left', 'rzab_timer_top');
         }
@@ -162,8 +182,11 @@
     window.rzabUpdateTimerUI = function() {
         if (!$('rzabboard-timer-content')) return;
         let now = Math.floor(Date.now()/1000), html = '', arr = [];
+        let showReg = lsGet('rzab_show_reg', 'true') === 'true';
+        let showEvt = lsGet('rzab_show_evt', 'true') === 'true';
+
         for (const [npc, conf] of Object.entries(configData)) {
-            if(conf.isEvent) {
+            if((conf.isEvent && showEvt) || (!conf.isEvent && showReg)) {
                 let d = heroesData[npc] || {};
                 arr.push({npc, conf, info: {last_kill: d.last_kill || 0, checked_maps: d.checked_maps || {}}});
             }
@@ -173,28 +196,38 @@
             let gS = (c,i) => { if(i.last_kill===0) return {g:3,v:0}; let ws=i.last_kill+c.min, we=i.last_kill+c.max; return now>we ? {g:1,v:now-we} : (now>=ws&&now<=we ? {g:2,v:we-now} : {g:3,v:ws-now}); };
             let sA=gS(a.conf,a.info), sB=gS(b.conf,b.info); return sA.g!==sB.g ? sA.g-sB.g : (sA.g===1 ? sB.v-sA.v : sA.v-sB.v);
         }).forEach(i => {
-            let lk=i.info.last_kill, wS=lk+i.conf.min, wE=lk+i.conf.max, tMaps=0, cMaps=0, col="#ccc", st="", mst="";
+            let lk=i.info.last_kill, wS=lk+i.conf.min, wE=lk+i.conf.max, tMaps=0, cMaps=0, col="#ccc", st="", mst="", pct="";
+            let prefix = i.conf.isEvent ? "[E]" : "[H]";
+
             if(i.conf.maps) i.conf.maps.forEach(m => { if(!m.startsWith('//')){ tMaps++; if((i.info.checked_maps[m]?.ts?now-i.info.checked_maps[m].ts:999999)<=(i.conf.colorOrange||300)) cMaps++; }});
             if(lk===0) { st="Brak danych"; col="#64748b"; }
             else if(now<wS) { st=fmtTime(wS-now); col="#94a3b8"; }
             else {
-                st=(now<=wE?"":"-")+fmtTime(Math.abs(wE-now));
-                col=now<=wE?"#f59e0b":"#ef4444";
+                if(now<=wE) {
+                    st=fmtTime(wE-now);
+                    col="#f59e0b";
+                    let p = wE > wS ? Math.floor(((now - wS) / (wE - wS)) * 100) : 100;
+                    pct = `<span style="color:#fbbf24;font-size:11px;margin-right:4px;">${p}%</span>`;
+                } else {
+                    st="-"+fmtTime(now-wE);
+                    col="#ef4444";
+                }
                 if(tMaps>0) mst=`<span style="color:${cMaps===tMaps?"#10b981":(cMaps>0?"#fbbf24":"#ef4444")};font-size:11px;margin-left:5px;white-space:nowrap;">[${cMaps}/${tMaps}]</span>`;
             }
             html += `
                 <div class="row tw-list-item do-action-cursor short rzab-timer-row" data-npc="${i.npc}" style="display:grid;grid-template-columns:minmax(0, 1fr) auto;align-items:center;padding:0 8px;">
                     <div style="display:flex;align-items:center;min-width:0;overflow:hidden;pointer-events:none;">
-                        <div class="name-val" style="color:${col};text-shadow:1px 1px 0 #000;font-size:13px;text-align:left!important;width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">[E] ${i.npc}</div>
+                        <div class="name-val" style="color:${col};text-shadow:1px 1px 0 #000;font-size:13px;text-align:left!important;width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${prefix} ${i.npc}</div>
                     </div>
                     <div style="display:flex;align-items:center;justify-content:flex-end;white-space:nowrap;margin-left:8px;pointer-events:none;">
+                        ${pct}
                         <span style="color:${col};font-weight:bold;text-shadow:1px 1px 0 #000;font-size:13px;">${st}</span>
                         ${mst}
                     </div>
                 </div>
             `;
         });
-        $('rzabboard-timer-content').innerHTML = html || `<div style="text-align:center;padding:15px;font-size:12px;color:#777;">Brak herosów do wyświetlenia</div>`;
+        $('rzabboard-timer-content').innerHTML = html || `<div style="text-align:center;padding:15px;font-size:12px;color:#777;">Wybierz kategorie herosów</div>`;
     };
 
     function fetchData() {
@@ -226,7 +259,6 @@
     setInterval(() => {
         let cmap="", cnick="", currentLvl = 0, npcs=null, now=Date.now();
 
-        // Pobieranie mapy, nicku i poziomu z zależności od interfejsu (nowy vs stary)
         if(typeof Engine!=='undefined' && Engine.map && Engine.hero) {
             cmap=Engine.map.d.name;
             cnick=Engine.hero.d.nick;
@@ -244,7 +276,6 @@
         let rawExpectedList = heroMaps[cmap] || [];
         let expectedList = [];
 
-        // Filtrowanie z użyciem mechaniki serwera Cronus[cite: 1, 2, 3]
         if (rawExpectedList.length > 0) {
             rawExpectedList.forEach(expHero => {
                 const conf = configData[expHero];
