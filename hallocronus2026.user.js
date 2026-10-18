@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         HALLOWEEN2026
-// @version      3.2
+// @version      3.3
 // @updateURL    https://github.com/Ropuch1/sdfgh/raw/refs/heads/main/herosi_test_rzabboard.user.js
 // @downloadURL  https://github.com/Ropuch1/sdfgh/raw/refs/heads/main/herosi_test_rzabboard.user.js
 // @match        https://cronus.margonem.com/*
@@ -101,21 +101,17 @@
             let tooltipWidth = tEl.offsetWidth || 320;
             let tooltipHeight = tEl.offsetHeight || 200;
 
-            // Domyślnie próbujemy po prawej stronie kursora
             let x = e.clientX + 15;
             let y = e.clientY + 15;
 
-            // Jeśli dymek wychodziłby poza prawą krawędź ekranu, przerzuć go na lewą stronę kursora
             if (x + tooltipWidth > window.innerWidth - 10) {
                 x = e.clientX - tooltipWidth - 15;
             }
 
-            // Ochrona przed wyjściem w dół ekranu
             if (y + tooltipHeight > window.innerHeight - 10) {
                 y = window.innerHeight - tooltipHeight - 10;
             }
 
-            // Ochrona przed wyjściem w górę ekranu
             if (y < 10) y = 10;
 
             tEl.style.left = x + 'px';
@@ -330,20 +326,29 @@
         let t = $('rzabboard-event-timer'); if(!t || !document.body.contains(t)) createUI(); window.rzabUpdateTimerUI();
     }, 1000);
 
-    // --- CORE LOGIC WITH COORDINATES ---
+    // --- CORE LOGIC WITH COORDINATES & DISTANCE CHECK ---
     setInterval(() => {
         let cmap="", cnick="", currentLvl = 0, npcs=null, now=Date.now();
+        let hx = 0, hy = 0, stasisVal = 0;
 
         if(typeof Engine!=='undefined' && Engine.map && Engine.hero) {
             cmap=Engine.map.d.name;
             cnick=Engine.hero.d.nick;
             currentLvl = Engine.hero.d.lvl;
             npcs=Engine.npcs?.check();
+            hx = Engine.hero.d.x;
+            hy = Engine.hero.d.y;
+            // NI
+            stasisVal = Engine.hero.d.stasis ? 1 : 0;
         } else if(typeof map!=='undefined' && map.name && typeof hero!=='undefined') {
             cmap=map.name;
             cnick=hero.nick;
             currentLvl = hero.lvl;
             npcs=typeof g!=='undefined'?g.npc:null;
+            hx = hero.x;
+            hy = hero.y;
+            // SI
+            stasisVal = hero.stasis ? 1 : 0;
         }
 
         if(!cmap || !cnick || !currentLvl) return;
@@ -376,11 +381,14 @@
         if(cmap!==lastMap || now-lastPingTime>5000) {
             lastMap = cmap; lastPingTime = now;
             if (expectedList.length > 0) {
-                expectedList.forEach(expHero => {
-                    req(URLS.api, "POST", null, new URLSearchParams({action:'camp', npc:expHero, map:cmap, nick:cnick}).toString());
+                // Dodano parametr `st` wysyłający stasis
+                expectedList.forEach((expHero, index) => {
+                    setTimeout(() => {
+                        req(URLS.api, "POST", null, new URLSearchParams({action:'camp', npc:expHero, map:cmap, nick:cnick, plvl: currentLvl, st: stasisVal}).toString());
+                    }, index * 150);
                 });
             } else {
-                req(URLS.api, "POST", null, new URLSearchParams({action:'online', npc:'', map:cmap, nick:cnick}).toString());
+                req(URLS.api, "POST", null, new URLSearchParams({action:'online', npc:'', map:cmap, nick:cnick, plvl: currentLvl, st: stasisVal}).toString());
             }
         }
 
@@ -393,7 +401,9 @@
                 if(expectedList.includes(nick) && type > 79) {
                     if(!reportedNpcs.has(id)) {
                         reportedNpcs.add(id);
-                        req(URLS.api, "POST", null, new URLSearchParams({action:'found', npc:nick, map:cmap, nick:cnick, x:nx, y:ny}).toString());
+                        setTimeout(() => {
+                            req(URLS.api, "POST", null, new URLSearchParams({action:'found', npc:nick, map:cmap, nick:cnick, x:nx, y:ny}).toString());
+                        }, 800);
                     }
                     if(!trackedHero) trackedHero = {id: id, name: nick, mapName: cmap, x: nx, y: ny};
                     if(trackedHero.id === id) {
@@ -408,22 +418,49 @@
                 if(cmap !== trackedHero.mapName) {
                     trackedHero = null;
                 } else if(!stillHere) {
+                    let dist = Math.max(Math.abs(hx - trackedHero.x), Math.abs(hy - trackedHero.y));
+                    if (dist <= 17) {
+                        let killedName = trackedHero.name;
+                        let killedId = trackedHero.id;
+                        let kx = trackedHero.x;
+                        let ky = trackedHero.y;
+                        trackedHero = null;
+                        reportedNpcs.delete(killedId);
+
+                        req(URLS.api, "POST", r => {
+                            if(r.status===200) {
+                                notify(`⚔️ Zapisano ubicie: ${killedName}! (${kx},${ky})`);
+                                fetchData();
+                            }
+                        }, new URLSearchParams({action:'auto_kill', npc:killedName, map:cmap, nick:cnick, x:kx, y:ky}).toString());
+                    } else {
+                        trackedHero = null;
+                    }
+                }
+            }
+        } else if(trackedHero) {
+            if (cmap !== trackedHero.mapName) {
+                trackedHero = null;
+            } else {
+                let dist = Math.max(Math.abs(hx - trackedHero.x), Math.abs(hy - trackedHero.y));
+                if (dist <= 17) {
                     let killedName = trackedHero.name;
                     let killedId = trackedHero.id;
                     let kx = trackedHero.x;
                     let ky = trackedHero.y;
                     trackedHero = null;
                     reportedNpcs.delete(killedId);
+
                     req(URLS.api, "POST", r => {
                         if(r.status===200) {
                             notify(`⚔️ Zapisano ubicie: ${killedName}! (${kx},${ky})`);
                             fetchData();
                         }
                     }, new URLSearchParams({action:'auto_kill', npc:killedName, map:cmap, nick:cnick, x:kx, y:ky}).toString());
+                } else {
+                    trackedHero = null;
                 }
             }
-        } else if(trackedHero) {
-            trackedHero = null;
         }
     }, 500);
 })();
