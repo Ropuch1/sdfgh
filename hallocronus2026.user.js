@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         HALLOWEEN2026
-// @version      3.4
+// @version      3.7
 // @updateURL    https://github.com/Ropuch1/sdfgh/raw/refs/heads/main/hallocronus2026.user.js
 // @downloadURL  https://github.com/Ropuch1/sdfgh/raw/refs/heads/main/hallocronus2026.user.js
 // @match        https://cronus.margonem.com/*
@@ -100,20 +100,11 @@
         if(hoveredNpc && tEl.style.display === 'block') {
             let tooltipWidth = tEl.offsetWidth || 320;
             let tooltipHeight = tEl.offsetHeight || 200;
-
             let x = e.clientX + 15;
             let y = e.clientY + 15;
-
-            if (x + tooltipWidth > window.innerWidth - 10) {
-                x = e.clientX - tooltipWidth - 15;
-            }
-
-            if (y + tooltipHeight > window.innerHeight - 10) {
-                y = window.innerHeight - tooltipHeight - 10;
-            }
-
+            if (x + tooltipWidth > window.innerWidth - 10) x = e.clientX - tooltipWidth - 15;
+            if (y + tooltipHeight > window.innerHeight - 10) y = window.innerHeight - tooltipHeight - 10;
             if (y < 10) y = 10;
-
             tEl.style.left = x + 'px';
             tEl.style.top = y + 'px';
         }
@@ -130,7 +121,6 @@
         }
     });
 
-    // --- DRAG HELPER Z BLOKADĄ WYJŚCIA POZA EKRAN ---
     function makeDraggable(el, handle, kL, kT, onDblClick = null, onSingleClick = null) {
         let isDrag = false, sX, sY, iL, iT, clkTimer = null;
         handle.addEventListener('mousedown', e => {
@@ -164,7 +154,6 @@
         });
     }
 
-    // --- UI CREATION ---
     function createUI() {
         if (!$('rzabboard-native-widget')) {
             let w = document.createElement('div');
@@ -249,7 +238,6 @@
         }
     }
 
-    // --- LOGIC ---
     window.rzabUpdateTimerUI = function() {
         if (!$('rzabboard-timer-content')) return;
         let now = Math.floor(Date.now()/1000), html = '', arr = [];
@@ -309,7 +297,6 @@
                 for(let h in configData) {
                     (configData[h].maps || []).forEach(m => {
                         if(!m.startsWith('//')) {
-                            // UCINANIE NAWIASÓW - pozwala na dopiski typu (Zoons)
                             let cleanM = m.replace(/^[-*•\s]+/, '').replace(/\s*\([^)]*\)$/, '').trim();
                             if(!newMap[cleanM]) newMap[cleanM] = [];
                             if(!newMap[cleanM].includes(h)) newMap[cleanM].push(h);
@@ -323,28 +310,28 @@
     }
 
     fetchData(); setInterval(fetchData, 5000); setTimeout(createUI, 1500);
+
     setInterval(() => {
         let t = $('rzabboard-event-timer'); if(!t || !document.body.contains(t)) createUI(); window.rzabUpdateTimerUI();
     }, 1000);
 
-    // --- CORE LOGIC WITH COORDINATES & DISTANCE CHECK ---
     setInterval(() => {
         let cmap="", cnick="", currentLvl = 0, npcs=null, now=Date.now();
         let hx = 0, hy = 0, stasisVal = 0;
 
         if(typeof Engine!=='undefined' && Engine.map && Engine.hero) {
-            cmap=Engine.map.d.name;
-            cnick=Engine.hero.d.nick;
+            cmap = Engine.map.d.name.replace(/\s*\([^)]*\)$/, '').trim();
+            cnick = Engine.hero.d.nick;
             currentLvl = Engine.hero.d.lvl;
-            npcs=Engine.npcs?.check();
+            npcs = Engine.npcs?.check();
             hx = Engine.hero.d.x;
             hy = Engine.hero.d.y;
             stasisVal = Engine.hero.d.stasis ? 1 : 0;
         } else if(typeof map!=='undefined' && map.name && typeof hero!=='undefined') {
-            cmap=map.name;
-            cnick=hero.nick;
+            cmap = map.name.replace(/\s*\([^)]*\)$/, '').trim();
+            cnick = hero.nick;
             currentLvl = hero.lvl;
-            npcs=typeof g!=='undefined'?g.npc:null;
+            npcs = typeof g!=='undefined'?g.npc:null;
             hx = hero.x;
             hy = hero.y;
             stasisVal = hero.stasis ? 1 : 0;
@@ -358,18 +345,21 @@
         if (rawExpectedList.length > 0) {
             rawExpectedList.forEach(expHero => {
                 const conf = configData[expHero];
-                if (conf && conf.level) {
-                    const bLvl = parseInt(conf.level);
-                    const pLvl = parseInt(currentLvl);
+                if (conf) {
                     let canInteract = false;
 
+                    // POPRAWKA BŁĘDU: Tytan przechodzi niezależnie od tego, czy wpisałeś mu lvl w panelu, czy nie.
                     if (conf.isTitan) {
-                        canInteract = true; // Tytanów może obstawiać każdy level
-                    } else if (conf.isEvent) {
-                        canInteract = pLvl >= Math.floor(bLvl / 2);
-                    } else {
-                        let minLvl = bLvl <= 100 ? Math.floor(bLvl / 2) : bLvl - 50;
-                        canInteract = pLvl >= minLvl && pLvl <= (bLvl + 13);
+                        canInteract = true; 
+                    } else if (conf.level) { // Inne herosy przejdą test tylko jak mają podany level
+                        const bLvl = parseInt(conf.level);
+                        const pLvl = parseInt(currentLvl);
+                        if (conf.isEvent) {
+                            canInteract = pLvl >= Math.floor(bLvl / 2);
+                        } else {
+                            let minLvl = bLvl <= 100 ? Math.floor(bLvl / 2) : bLvl - 50;
+                            canInteract = pLvl >= minLvl && pLvl <= (bLvl + 13);
+                        }
                     }
 
                     if (canInteract) {
@@ -426,7 +416,7 @@
                         let ky = trackedHero.y;
                         trackedHero = null;
                         reportedNpcs.delete(killedId);
-
+                        
                         req(URLS.api, "POST", r => {
                             if(r.status===200) {
                                 notify(`⚔️ Zapisano ubicie: ${killedName}! (${kx},${ky})`);
@@ -450,7 +440,7 @@
                     let ky = trackedHero.y;
                     trackedHero = null;
                     reportedNpcs.delete(killedId);
-
+                    
                     req(URLS.api, "POST", r => {
                         if(r.status===200) {
                             notify(`⚔️ Zapisano ubicie: ${killedName}! (${kx},${ky})`);
