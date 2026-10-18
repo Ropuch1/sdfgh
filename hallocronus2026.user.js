@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         HALLOWEEN2026
-// @version      3.3
-// @updateURL    https://github.com/Ropuch1/sdfgh/raw/refs/heads/main/herosi_test_rzabboard.user.js
-// @downloadURL  https://github.com/Ropuch1/sdfgh/raw/refs/heads/main/herosi_test_rzabboard.user.js
+// @version      3.4
+// @updateURL    https://github.com/Ropuch1/sdfgh/raw/refs/heads/main/hallocronus2026.user.js
+// @downloadURL  https://github.com/Ropuch1/sdfgh/raw/refs/heads/main/hallocronus2026.user.js
 // @match        https://cronus.margonem.com/*
 // @grant        GM_xmlhttpRequest
 // @connect      rzabboard.cytr.us
@@ -268,7 +268,7 @@
             let sA=gS(a.conf,a.info), sB=gS(b.conf,b.info); return sA.g!==sB.g ? sA.g-sB.g : (sA.g===1 ? sB.v-sA.v : sA.v-sB.v);
         }).forEach(i => {
             let lk=i.info.last_kill, wS=lk+i.conf.min, wE=lk+i.conf.max, tMaps=0, cMaps=0, col="#ccc", st="", mst="", pct="";
-            let prefix = i.conf.isEvent ? "[E]" : "[H]";
+            let prefix = i.conf.isEvent ? "[E]" : (i.conf.isTitan ? "[T]" : "[H]");
 
             if(i.conf.maps) i.conf.maps.forEach(m => { if(!m.startsWith('//')){ tMaps++; if((i.info.checked_maps[m]?.ts?now-i.info.checked_maps[m].ts:999999)<=(i.conf.colorOrange||300)) cMaps++; }});
             if(lk===0) { st="Brak danych"; col="#64748b"; }
@@ -309,7 +309,8 @@
                 for(let h in configData) {
                     (configData[h].maps || []).forEach(m => {
                         if(!m.startsWith('//')) {
-                            let cleanM = m.replace(/^[-*•\s]+/, '').trim();
+                            // UCINANIE NAWIASÓW - pozwala na dopiski typu (Zoons)
+                            let cleanM = m.replace(/^[-*•\s]+/, '').replace(/\s*\([^)]*\)$/, '').trim();
                             if(!newMap[cleanM]) newMap[cleanM] = [];
                             if(!newMap[cleanM].includes(h)) newMap[cleanM].push(h);
                         }
@@ -338,7 +339,6 @@
             npcs=Engine.npcs?.check();
             hx = Engine.hero.d.x;
             hy = Engine.hero.d.y;
-            // NI
             stasisVal = Engine.hero.d.stasis ? 1 : 0;
         } else if(typeof map!=='undefined' && map.name && typeof hero!=='undefined') {
             cmap=map.name;
@@ -347,7 +347,6 @@
             npcs=typeof g!=='undefined'?g.npc:null;
             hx = hero.x;
             hy = hero.y;
-            // SI
             stasisVal = hero.stasis ? 1 : 0;
         }
 
@@ -364,11 +363,13 @@
                     const pLvl = parseInt(currentLvl);
                     let canInteract = false;
 
-                    if (conf.isEvent) {
-                         canInteract = pLvl >= Math.floor(bLvl / 2);
+                    if (conf.isTitan) {
+                        canInteract = true; // Tytanów może obstawiać każdy level
+                    } else if (conf.isEvent) {
+                        canInteract = pLvl >= Math.floor(bLvl / 2);
                     } else {
-                         let minLvl = bLvl <= 100 ? Math.floor(bLvl / 2) : bLvl - 50;
-                         canInteract = pLvl >= minLvl && pLvl <= (bLvl + 13);
+                        let minLvl = bLvl <= 100 ? Math.floor(bLvl / 2) : bLvl - 50;
+                        canInteract = pLvl >= minLvl && pLvl <= (bLvl + 13);
                     }
 
                     if (canInteract) {
@@ -381,7 +382,6 @@
         if(cmap!==lastMap || now-lastPingTime>5000) {
             lastMap = cmap; lastPingTime = now;
             if (expectedList.length > 0) {
-                // Dodano parametr `st` wysyłający stasis
                 expectedList.forEach((expHero, index) => {
                     setTimeout(() => {
                         req(URLS.api, "POST", null, new URLSearchParams({action:'camp', npc:expHero, map:cmap, nick:cnick, plvl: currentLvl, st: stasisVal}).toString());
